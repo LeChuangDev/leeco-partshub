@@ -1,6 +1,19 @@
+# 依赖与产物
 node_modules/
 dist/
-dev/.kv-data.json
-*.log
-.DS_Store
 .vite/
+
+# 本地运行数据（演示库、截图、临时脚本）
+.data/
+tests/.artifacts/
+.tmp/
+coverage/
+
+# 环境与日志
+.env
+.env.local
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db

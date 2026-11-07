@@ -11,7 +11,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { darkTheme, lightTheme, NConfigProvider, NMessageProvider, NDialogProvider } from 'naive-ui'
-import { useTheme } from './stores/theme'
+import { useTheme } from '@/shared/stores/theme'
 
 const themeStore = useTheme()
 themeStore.init()

@@ -1,0 +1,18 @@
+import { chromium } from 'playwright'
+const b = await chromium.launch({ channel: 'chrome', headless: true })
+const p = await (await b.newContext({ viewport: { width: 1440, height: 940 }, locale: 'zh-CN' })).newPage()
+const errs = []
+p.on('pageerror', e => errs.push(e.message))
+p.on('console', m => { if (m.type() === 'error') errs.push(m.text()) })
+await p.goto('http://127.0.0.1:5173/#/projects'); await p.waitForTimeout(2600)
+const row = p.locator('.n-data-table-tbody .n-data-table-tr').first()
+console.log('行数', await p.locator('.n-data-table-tbody .n-data-table-tr').count())
+await row.click({ button: 'right' }); await p.waitForTimeout(500)
+const txt = (await p.locator('.ctx-panel').innerText()).replace(/\s+/g, ' ')
+console.log('项目行右键:', txt)
+await p.screenshot({ path: 'tests/.artifacts/ctx-project.png' })
+await p.locator('.ctx-item', { hasText: '更换物料' }).click(); await p.waitForTimeout(700)
+console.log('换料弹窗:', await p.locator('.n-modal', { hasText: '更换物料' }).first().isVisible())
+await p.locator('.n-modal').last().getByRole('button', { name: '取消' }).click(); await p.waitForTimeout(300)
+console.log('错误', errs.length, errs.slice(0, 3))
+await b.close()

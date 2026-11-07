@@ -1,18 +1,24 @@
+import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// 前端构建为纯静态产物；/api 在开发期由本地 Node 服务端 (dev/server.mjs) 提供，
-// 生产期由 EdgeOne 边缘函数提供。前端始终使用相对路径 /api，无需环境判断。
+const resolvePath = (p: string) => fileURLToPath(new URL(p, import.meta.url))
+
+// 前端构建为纯静态产物；/api 在开发期由 tools/dev-server 提供，生产期由 EdgeOne 边缘函数提供。
+// 前端始终使用相对路径 /api，无需环境判断。
 export default defineConfig({
   plugins: [vue()],
+  resolve: {
+    alias: {
+      '@': resolvePath('./src'),
+      '@server': resolvePath('./server')
+    }
+  },
   server: {
     port: 5173,
     host: true,
     proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:8787',
-        changeOrigin: true
-      }
+      '/api': { target: 'http://127.0.0.1:8787', changeOrigin: true }
     }
   },
   build: {
