@@ -103,3 +103,88 @@ export async function importAll(kv, data) {
     }
   }
 }
+
+/* --------------------------- 恢复前校验与预演 --------------------------- */
+
+const BACKUP_ARRAYS = ['categories', 'parts', 'stocks', 'locations', 'transactions', 'projects', 'projectBoms']
+
+/** 校验一个集合的元素形状与 id 唯一性，返回 id 集合 */
+function checkIdList(list, name, errors) {
+  const seen = new Set()
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i]
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      errors.push(`${name}[${i}] 必须是对象`)
+      continue
+    }
+    const id = item.id
+    if (!id || typeof id !== 'string') {
+      errors.push(`${name}[${i}] 缺少字符串 id`)
+      continue
+    }
+    if (seen.has(id)) {
+      errors.push(`${name} 存在重复 id：${id}`)
+      continue
+    }
+    seen.add(id)
+  }
+  return seen
+}
+
+/**
+ * 恢复前校验：只做结构与引用完整性检查，不写库。
+ * errors 会阻断恢复；warnings 仅提示（例如历史流水引用了已删除的器件）。
+ */
+export function validateBackup(data) {
+  const errors = []
+  const warnings = []
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { errors: ['备份文件顶层必须是 JSON 对象'], warnings }
+  }
+  for (const key of BACKUP_ARRAYS) {
+    if (data[key] == null) continue
+    if (!Array.isArray(data[key])) errors.push(`字段 ${key} 必须是数组`)
+  }
+  if (!Array.isArray(data.parts)) errors.push('缺少 parts 数组')
+  if (errors.length) return { errors, warnings }
+  if (!data.parts.length) warnings.push('备份中没有任何器件，恢复后将清空现有库存')
+
+  const partIds = checkIdList(data.parts, 'parts', errors)
+  const locationIds = data.locations ? checkIdList(data.locations, 'locations', errors) : new Set()
+  const projectIds = data.projects ? checkIdList(data.projects, 'projects', errors) : new Set()
+  if (data.categories) checkIdList(data.categories, 'categories', errors)
+  if (data.stocks) checkIdList(data.stocks, 'stocks', errors)
+  if (data.transactions) checkIdList(data.transactions, 'transactions', errors)
+  if (errors.length) return { errors, warnings }
+
+  for (const s of data.stocks || []) {
+    if (s.partId && !partIds.has(s.partId)) warnings.push(`库存批次 ${s.id} 引用了不存在的器件 ${s.partId}`)
+    if (s.locationId && locationIds.size && !locationIds.has(s.locationId)) warnings.push(`库存批次 ${s.id} 引用了不存在的库位 ${s.locationId}`)
+  }
+  for (const t of data.transactions || []) {
+    if (t.partId && !partIds.has(t.partId)) warnings.push(`流水 ${t.id} 引用了不存在的器件 ${t.partId}`)
+  }
+  for (const doc of data.projectBoms || []) {
+    if (doc && doc.projectId && projectIds.size && !projectIds.has(doc.projectId)) {
+      warnings.push(`项目 BOM 引用了不存在的项目 ${doc.projectId}`)
+    }
+  }
+  if (warnings.length > 20) {
+    const rest = warnings.length - 20
+    warnings.length = 20
+    warnings.push(`…另有 ${rest} 条引用警告`)
+  }
+  return { errors, warnings }
+}
+
+/** 仅统计备份包含的记录数，供恢复前预览 */
+export function countBackup(data) {
+  return {
+    categories: (data.categories || []).length,
+    parts: (data.parts || []).length,
+    stocks: (data.stocks || []).length,
+    locations: (data.locations || []).length,
+    transactions: (data.transactions || []).length,
+    projects: (data.projects || []).length
+  }
+}

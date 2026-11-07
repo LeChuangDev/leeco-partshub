@@ -50,7 +50,7 @@
     <div class="main-col">
       <header class="header">
         <div class="h-left">
-          <button class="icon-btn" :title="isMobile ? '打开菜单' : collapsed ? '展开侧栏' : '收起侧栏'" @click="toggleSider">
+          <button class="icon-btn" :title="isMobile ? '打开菜单' : collapsed ? '展开侧栏' : '收起侧栏'" :aria-label="isMobile ? '打开菜单' : collapsed ? '展开侧栏' : '收起侧栏'" @click="toggleSider">
             <AppIcon name="menu" :size="18" />
           </button>
           <nav class="crumb">
@@ -58,7 +58,7 @@
             <AppIcon name="chevronRight" :size="12" />
             <span class="crumb-cur">{{ currentTitle }}</span>
           </nav>
-          <button class="search-trigger" title="全局搜索（Ctrl / ⌘ + K）" @click="ui.openPalette()">
+          <button class="search-trigger" title="全局搜索（Ctrl / ⌘ + K）" aria-label="全局搜索" @click="ui.openPalette()">
             <AppIcon name="search" :size="15" />
             <span class="st-text">搜索器件、库位…</span>
             <kbd class="st-kbd">⌘K</kbd>
@@ -66,10 +66,10 @@
         </div>
 
         <div class="h-right">
-          <button class="icon-btn kb-trigger" title="键盘快捷键（?）" @click="ui.openHelp()">
+          <button class="icon-btn kb-trigger" title="键盘快捷键（?）" aria-label="键盘快捷键" @click="ui.openHelp()">
             <AppIcon name="keyboard" :size="17" />
           </button>
-          <button class="icon-btn" :title="theme.dark ? '切换浅色' : '切换暗色'" @click="theme.toggle()">
+          <button class="icon-btn" :title="theme.dark ? '切换浅色' : '切换暗色'" :aria-label="theme.dark ? '切换到浅色主题' : '切换到暗色主题'" @click="theme.toggle()">
             <AppIcon :name="theme.dark ? 'sun' : 'moon'" :size="18" />
           </button>
           <n-button type="primary" strong round class="quick-add" @click="ui.openQuickAdd()">
@@ -77,7 +77,7 @@
             <span class="qa-text">快速入库</span>
           </n-button>
           <n-dropdown :options="userOptions" trigger="click" @select="onUser">
-            <button class="icon-btn" title="账户与令牌"><AppIcon name="user" :size="17" /></button>
+            <button class="icon-btn" title="账户与令牌" aria-label="账户与令牌"><AppIcon name="user" :size="17" /></button>
           </n-dropdown>
         </div>
       </header>
@@ -131,16 +131,6 @@ const menuOptions = [
   { label: '备份与设置', key: 'backup', icon: () => h(AppIcon, { name: 'settings', size: 18 }) }
 ]
 
-const DESC: Record<string, string> = {
-  dashboard: '库存健康与资产概览',
-  parts: '主数据、批次与检索',
-  projects: '项目用料与齐套跟踪',
-  bom: '需求比对与缺料清单',
-  locations: '树形收纳与二维码',
-  import: '采购订单批量入库',
-  backup: '备份、导出与令牌'
-}
-
 const activeKey = computed(() => route.name as string)
 const currentTitle = computed(() => (route.meta?.title as string) || '樂創元件仓')
 
@@ -154,9 +144,15 @@ function toggleSider() {
   else collapsed.value = !collapsed.value
 }
 
+let viewportReady = false
+let lastNarrow = false
 function syncViewport() {
   isMobile.value = window.innerWidth < 860
-  collapsed.value = window.innerWidth < 1180
+  const narrow = window.innerWidth < 1180
+  // 首次按断点给默认值；之后只在「变窄」时自动收起，不覆盖用户手动展开/收起
+  if (!viewportReady || (narrow && !lastNarrow)) collapsed.value = narrow
+  viewportReady = true
+  lastNarrow = narrow
 }
 
 /* ---------------- 全局快捷键 ---------------- */
@@ -187,11 +183,11 @@ function onGlobalKey(e: KeyboardEvent) {
   // 命令面板打开时，不叠加其它弹层
   if (ui.paletteOpen || ui.anyModalOpen) return
 
-  if (mod && key === 'i') { e.preventDefault(); ui.openQuickAdd(); return }
-  if (mod && key === 's') { e.preventDefault(); ui.openScan(); return }
+  if (mod && key === 'i' && !isTyping(e.target)) { e.preventDefault(); ui.openQuickAdd(); return }
+  if (mod && key === 's' && !isTyping(e.target)) { e.preventDefault(); ui.openScan(); return }
 
-  // Alt + 1..8 直达页面
-  if (e.altKey && !mod && NAV_KEYS[e.key]) {
+  // Alt + 1..8 直达页面（输入框内不劫持）
+  if (e.altKey && !mod && NAV_KEYS[e.key] && !isTyping(e.target)) {
     e.preventDefault()
     router.push({ name: NAV_KEYS[e.key] })
     return

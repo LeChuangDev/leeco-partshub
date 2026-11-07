@@ -1,11 +1,18 @@
 <template>
-  <span class="app-icon" :style="{ width: size + 'px', height: size + 'px' }" v-html="svg"></span>
+  <span
+    class="app-icon"
+    :style="{ width: size + 'px', height: size + 'px' }"
+    :role="label ? 'img' : undefined"
+    :aria-label="label || undefined"
+    :aria-hidden="label ? undefined : 'true'"
+    v-html="svg"
+  ></span>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = withDefaults(defineProps<{ name: string; size?: number }>(), { size: 20 })
+const props = withDefaults(defineProps<{ name: string; size?: number; label?: string }>(), { size: 20 })
 
 // 描边风格图标（24x24，stroke=currentColor），内容来自常量、无用户输入，v-html 安全。
 const ICONS: Record<string, string> = {

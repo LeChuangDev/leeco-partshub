@@ -74,7 +74,7 @@
         <div class="imp-actions">
           <span class="dim" style="font-size: 12px">已选 {{ checked.length }} 项 · 金额 ¥{{ totalAmount.toFixed(2) }}</span>
           <n-select v-model:value="defaultLoc" :options="locOptions" placeholder="默认位置" clearable size="small" style="width: 170px" />
-          <n-button type="primary" :loading="committing" :disabled="!checked.length" @click="commit">
+          <n-button type="primary" :loading="committing" :disabled="!checked.length" @click="confirmCommit">
             <template #icon><AppIcon name="check" :size="15" /></template>
             确认入库
           </n-button>
@@ -122,9 +122,8 @@
 import { computed, h, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  NUpload, NUploadDragger, NSelect, NButton, NDataTable, NAlert, NTag, NInput, useMessage
+  NUpload, NUploadDragger, NSelect, NButton, NDataTable, NAlert, NTag, NInput, useDialog, useMessage
 } from 'naive-ui'
-import * as XLSX from 'xlsx'
 import { api } from '@/shared/api'
 import { mapRow, detectPlatform, PLATFORMS } from '@server/domain/import-map.js'
 import AppIcon from '@/shared/ui/AppIcon.vue'
@@ -132,6 +131,7 @@ import PageHeader from '@/shared/ui/PageHeader.vue'
 import type { Location } from '@/shared/api/types'
 
 const message = useMessage()
+const dialog = useDialog()
 const router = useRouter()
 const platform = ref('')
 const rawRows = ref<any[]>([])
@@ -252,6 +252,7 @@ async function onFile(o: any) {
   if (!file) return
   try {
     const buf = await file.arrayBuffer()
+    const XLSX = await import('xlsx')
     const wb = XLSX.read(new Uint8Array(buf), { type: 'array' })
     const ws = wb.Sheets[wb.SheetNames[0]]
     const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
@@ -270,7 +271,28 @@ async function buildPlan() {
   checked.value = plan.items.filter((i: any) => i.action !== 'skip').map((i: any) => i.index)
 }
 
-async function commit() {
+function confirmCommit() {
+  if (!checked.value.length) return
+  const picked = items.value.filter((it) => checked.value.includes(it.index) && it.action !== 'skip')
+  const creates = picked.filter((it) => it.action === 'create').length
+  const matches = picked.filter((it) => it.action === 'match').length
+  const loc = defaultLoc.value
+    ? locOptions.value.find((o) => o.value === defaultLoc.value)?.label || '已选位置'
+    : '未指定（入库后需再分配库位）'
+  dialog.warning({
+    title: '确认入库？',
+    content: () => h('div', { style: 'font-size:13px;line-height:1.9' }, [
+      h('p', { style: 'margin:0 0 6px' }, `将写入 ${picked.length} 行：新建 ${creates} 个器件，匹配入库 ${matches} 行。`),
+      h('p', { style: 'margin:0 0 6px' }, `合计金额约 ¥${totalAmount.value.toFixed(2)}；默认库位：${loc}。`),
+      h('p', { style: 'margin:0;color:#d97706' }, '提交后会立即写入库存流水，当前版本不支持一键撤销；请先确认预览与勾选无误。')
+    ]),
+    positiveText: '确认入库',
+    negativeText: '再检查一下',
+    onPositiveClick: doCommit
+  })
+}
+
+async function doCommit() {
   committing.value = true
   try {
     const out = items.value.map((it) => ({
@@ -284,7 +306,11 @@ async function commit() {
       message.success(`导入完成：新建 ${r.summary.created}，匹配 ${r.summary.matched}`)
       items.value = []; rawRows.value = []; platform.value = ''
     } else {
-      message.error('导入失败')
+      const errors = r.errors || []
+      const detail = errors.slice(0, 2).map((e: any) => `第 ${Number(e.index) + 1} 行：${e.msg}`).join('；')
+      lastSummary.value = r.summary
+      message.error(`有 ${r.summary?.errors ?? errors.length} 行失败${detail ? '：' + detail : ''}；已成功的行不会回滚，请到元器件页核对`)
+      if (errors.length) console.warn('[import] 失败明细', errors)
     }
   } catch (e: any) { message.error(e.message) }
   finally { committing.value = false }

@@ -3,11 +3,14 @@
 
 import { json } from '../http-utils.js'
 import { getStats } from '../../application/analytics.service.js'
-import { getMeta } from '../../repositories/kv-index.js'
+import { getMeta, idxGet } from '../../repositories/kv-index.js'
 
 export async function handleStats({ url, kv }) {
   const period = url.searchParams.get('period') || 'week'
-  return json(0, await getStats(kv, { period }))
+  const stats = await getStats(kv, { period })
+  // 项目数由项目索引在 HTTP 层补齐：统计层不反向依赖项目聚合，但对外字段应是真实值
+  stats.projectsCount = (await idxGet(kv, 'index:projects')).length
+  return json(0, stats)
 }
 
 export async function handleMeta({ kv }) {

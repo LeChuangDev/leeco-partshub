@@ -16,8 +16,8 @@
               <template #icon><AppIcon name="download" :size="16" /></template>
               导出全量 JSON
             </n-button>
-            <n-upload accept=".json" :default-upload="false" :max="1" :show-file-list="false" @change="restore">
-              <n-button>
+            <n-upload accept=".json" :default-upload="false" :max="1" :show-file-list="false" :disabled="restoring" @change="restore">
+              <n-button :loading="restoring">
                 <template #icon><AppIcon name="upload" :size="16" /></template>
                 恢复备份
               </n-button>
@@ -84,19 +84,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, h, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NUpload, NInput, useMessage } from 'naive-ui'
-import * as XLSX from 'xlsx'
+import { NButton, NUpload, NInput, useDialog, useMessage } from 'naive-ui'
 import { api, getToken } from '@/shared/api'
 import { useAuth } from '@/modules/auth/stores/auth'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import PageHeader from '@/shared/ui/PageHeader.vue'
 
 const message = useMessage()
+const dialog = useDialog()
 const router = useRouter()
 const auth = useAuth()
 const loading = ref(false)
+const restoring = ref(false)
+const rollbackSnapshot = ref<any>(null)
 
 const masked = computed(() => { const t = getToken(); return t ? t.slice(0, 4) + '••••••••' + t.slice(-2) : '未设置' })
 
@@ -113,54 +115,133 @@ async function exportJson() {
 async function restore(o: any) {
   const file = o?.file?.file as File
   if (!file) return
+  if (file.size > 20 * 1024 * 1024) { message.error('备份文件超过 20MB，已拒绝'); return }
+  restoring.value = true
   try {
     const text = await file.text()
-    const data = JSON.parse(text)
-    const r: any = await api.restore(data)
-    message.success(`恢复完成：${JSON.stringify(r.counts)}`)
-  } catch (e: any) { message.error('恢复失败：' + e.message) }
+    let data: any
+    try { data = JSON.parse(text) } catch { message.error('文件不是合法 JSON'); return }
+
+    // 先服务端预演：只校验结构与引用，不写库
+    const dry: any = await api.restoreDryRun(data)
+    const c = dry.counts || {}
+    const warnings: string[] = dry.warnings || []
+    // 恢复前快照：既用于对比展示，也作为本次会话的回滚点
+    let current: any = {}
+    rollbackSnapshot.value = null
+    try {
+      const snapshot: any = await api.exportAll()
+      rollbackSnapshot.value = snapshot
+      current = {
+        categoriesCount: (snapshot.categories || []).length,
+        partsCount: (snapshot.parts || []).length,
+        transactionsCount: (snapshot.transactions || []).length
+      }
+    } catch { current = {} }
+
+    dialog.warning({
+      title: '确认覆盖恢复？',
+      content: () => h('div', { style: 'font-size:13px;line-height:1.85' }, [
+        h('p', { style: 'margin:0 0 8px;color:#d03050;font-weight:600' }, '恢复会用备份内容整体覆盖当前数据，且不可撤销。'),
+        h('div', `备份包含：${c.categories ?? 0} 分类 · ${c.parts ?? 0} 器件 · ${c.stocks ?? 0} 库存批次 · ${c.locations ?? 0} 库位 · ${c.transactions ?? 0} 流水 · ${c.projects ?? 0} 项目`),
+        h('div', `当前数据：${current.categoriesCount ?? '—'} 分类 · ${current.partsCount ?? '—'} 器件 · ${current.transactionsCount ?? '—'} 流水`),
+        warnings.length
+          ? h('div', { style: 'margin-top:8px;color:#d97706' }, `校验提示 ${warnings.length} 条：${warnings.slice(0, 3).join('；')}`)
+          : null,
+        h('p', { style: 'margin:10px 0 0;color:#666' }, '建议先「导出全量 JSON」保留一份当前快照。')
+      ]),
+      positiveText: '确认覆盖',
+      negativeText: '取消',
+      onPositiveClick: async () => {
+        try {
+          const r: any = await api.restore(data)
+          message.success(`恢复完成：${JSON.stringify(r.counts)}`)
+          window.dispatchEvent(new CustomEvent('leeco:data-changed'))
+          if (rollbackSnapshot.value) {
+            dialog.info({
+              title: '需要回滚吗？',
+              content: '已保留恢复前的数据快照（仅本次会话有效）。若结果不符合预期，可立即回滚。',
+              positiveText: '保留恢复结果',
+              negativeText: '回滚到恢复前',
+              onNegativeClick: async () => {
+                try {
+                  await api.restore(rollbackSnapshot.value)
+                  message.success('已回滚到恢复前状态')
+                  window.dispatchEvent(new CustomEvent('leeco:data-changed'))
+                } catch (e: any) {
+                  message.error('回滚失败：' + (e?.message || e))
+                  return false
+                }
+              }
+            })
+          }
+        } catch (e: any) {
+          message.error('恢复失败：' + (e?.message || e))
+          return false
+        }
+      }
+    })
+  } catch (e: any) {
+    message.error('恢复失败：' + (e?.message || e))
+  } finally {
+    restoring.value = false
+  }
 }
 
 async function exportXlsx(kind: 'parts' | 'stock' | 'lowstock') {
-  let rows: any[] = []
-  if (kind === 'parts') {
-    const data: any = await api.exportAll()
-    const catMap = new Map((data.categories || []).map((c: any) => [c.id, c.name]))
-    const qtyMap: Record<string, number> = {}
-    for (const s of data.stocks || []) qtyMap[s.partId] = (qtyMap[s.partId] || 0) + (Number(s.quantity) || 0)
-    rows = (data.parts || []).map((p: any) => ({
-      名称: p.name, 内部编号: p.internalNo, 分类: catMap.get(p.categoryId) || '未分类', 封装: p.package,
-      型号: p.manufacturerModel, 品牌: p.brand, 标签: (p.tags || []).join(','),
-      库存: qtyMap[p.id] ?? 0, 安全库存: p.safetyStock || 0
-    }))
-  } else if (kind === 'stock') {
-    const data: any = await api.exportAll()
-    const partMap = new Map((data.parts || []).map((p: any) => [p.id, p]))
-    const locMap = new Map((data.locations || []).map((l: any) => [l.id, l.name + ' (' + l.code + ')']))
-    rows = (data.stocks || []).map((s: any) => {
-      const p: any = partMap.get(s.partId) || {}
-      return {
-        名称: p.name || s.partId, 型号: p.manufacturerModel || '', 封装: p.package || '',
-        位置: locMap.get(s.locationId) || '', 数量: s.quantity, 单位: s.unit,
-        单价: s.unitPrice, 供应商: s.supplier, 订单号: s.orderNo || '', 入库时间: s.createdAt || ''
-      }
-    })
-  } else {
-    const st = await api.stats()
-    rows = st.lowStock.map((l) => ({ 名称: l.name, 当前库存: l.quantity, 安全库存: l.safetyStock }))
+  try {
+    let rows: any[] = []
+    if (kind === 'parts') {
+      const data: any = await api.exportAll()
+      const catMap = new Map((data.categories || []).map((c: any) => [c.id, c.name]))
+      const qtyMap: Record<string, number> = {}
+      for (const s of data.stocks || []) qtyMap[s.partId] = (qtyMap[s.partId] || 0) + (Number(s.quantity) || 0)
+      rows = (data.parts || []).map((p: any) => ({
+        名称: p.name, 内部编号: p.internalNo, 分类: catMap.get(p.categoryId) || '未分类', 封装: p.package,
+        型号: p.manufacturerModel, 品牌: p.brand, 标签: (p.tags || []).join(','),
+        库存: qtyMap[p.id] ?? 0, 安全库存: p.safetyStock || 0
+      }))
+    } else if (kind === 'stock') {
+      const data: any = await api.exportAll()
+      const partMap = new Map((data.parts || []).map((p: any) => [p.id, p]))
+      const locMap = new Map((data.locations || []).map((l: any) => [l.id, l.name + ' (' + l.code + ')']))
+      rows = (data.stocks || []).map((s: any) => {
+        const p: any = partMap.get(s.partId) || {}
+        return {
+          名称: p.name || s.partId, 型号: p.manufacturerModel || '', 封装: p.package || '',
+          位置: locMap.get(s.locationId) || '', 数量: s.quantity, 单位: s.unit,
+          单价: s.unitPrice, 供应商: s.supplier, 订单号: s.orderNo || '', 入库时间: s.createdAt || ''
+        }
+      })
+    } else {
+      const st = await api.stats()
+      rows = st.lowStock.map((l) => ({ 名称: l.name, 当前库存: l.quantity, 安全库存: l.safetyStock }))
+    }
+    const XLSX = await import('xlsx')
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, kind)
+    XLSX.writeFile(wb, `leeco-${kind}-${Date.now()}.xlsx`)
+    message.success('已导出 Excel')
+  } catch (e: any) {
+    message.error('导出失败：' + (e?.message || e))
   }
-  const ws = XLSX.utils.json_to_sheet(rows)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, kind)
-  XLSX.writeFile(wb, `leeco-${kind}-${Date.now()}.xlsx`)
-  message.success('已导出 Excel')
 }
 
 function download(url: string, name: string) {
   const a = document.createElement('a'); a.href = url; a.download = name; a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
-function copyToken() {
-  navigator.clipboard?.writeText(getToken()); message.success('已复制')
+async function copyToken() {
+  const t = getToken()
+  if (!t) { message.warning('当前没有可复制的令牌'); return }
+  try {
+    if (!navigator.clipboard) throw new Error('clipboard unavailable')
+    await navigator.clipboard.writeText(t)
+    message.success('已复制')
+  } catch {
+    message.warning('浏览器未授权剪贴板，请手动选择复制')
+  }
 }
 function logout() { auth.logout(); router.push({ name: 'login' }) }
 </script>

@@ -14,7 +14,7 @@
           <template #icon><AppIcon name="project" :size="15" /></template>
           保存为项目
         </n-button>
-        <n-button type="primary" size="small" :disabled="!readyLines.length" @click="openConsume">
+        <n-button type="primary" size="small" :disabled="!readyLines.length && !shortRows.length" @click="openConsume">
           <template #icon><AppIcon name="box" :size="15" /></template>
           一键出库
         </n-button>
@@ -84,19 +84,19 @@
           <div class="kpi-sub">{{ summary?.partKinds }} 种器件</div>
         </div>
         <div class="card kpi">
-          <div class="kpi-label">齐套率</div>
+          <div class="kpi-label">齐套率（件）</div>
           <div class="kpi-value" :class="completenessClass">{{ summary?.completeness }}<span class="kpi-unit">%</span></div>
           <div class="kpi-bar"><i :style="{ width: (summary?.completeness || 0) + '%' }" :class="completenessClass" /></div>
         </div>
         <div class="card kpi">
-          <div class="kpi-label">缺料行</div>
+          <div class="kpi-label">缺料行（不含未建档）</div>
           <div class="kpi-value accent">{{ (summary?.shortLines || 0) + (summary?.emptyLines || 0) }}<span class="kpi-unit">行</span></div>
-          <div class="kpi-sub">缺口 {{ summary?.shortageQty }} 个</div>
+          <div class="kpi-sub">缺口 {{ summary?.shortageQty }} 件</div>
         </div>
         <div class="card kpi">
           <div class="kpi-label">未建档</div>
           <div class="kpi-value">{{ summary?.missingLines }}<span class="kpi-unit">行</span></div>
-          <div class="kpi-sub">匹配率 {{ summary?.coverage }}%</div>
+          <div class="kpi-sub">匹配率（行） {{ summary?.coverage }}%</div>
         </div>
       </div>
 
@@ -200,12 +200,17 @@
         </n-form-item>
       </n-form>
       <div class="consume-summary">
-        <div class="cs-row"><span>齐套行</span><b>{{ readyLines.length }} 行 / {{ readyQty }} 个</b></div>
-        <div class="cs-row"><span>跳过缺料行</span><b>{{ lines.length - readyLines.length }} 行</b></div>
+        <div class="cs-row"><span>需求总量</span><b>{{ totalRequired }} 件</b></div>
+        <div class="cs-row"><span>本次出库</span><b class="ok-text">{{ consumeQty }} 件</b></div>
+        <div class="cs-row"><span>仍未覆盖</span><b class="warn-text">{{ Math.max(0, totalRequired - consumeQty) }} 件</b></div>
+        <div class="cs-row"><span>不出库行</span><b>{{ lines.length - consumePlan.length }} 行</b></div>
         <div class="cs-row"><span>出库方式</span><b>按批次 FIFO 扣减</b></div>
       </div>
+      <n-checkbox v-if="shortRows.length" v-model:checked="partialShort" style="margin-top: 10px">
+        缺料行按可用量部分出库（{{ shortRows.length }} 行，会产生欠料）
+      </n-checkbox>
       <p class="dim" style="font-size: 12px; margin: 10px 0 0">
-        出库会写入库存流水，备注记录位号；缺料行需补齐库存后再次出库。
+        出库会写入库存流水，备注记录位号。未勾选「部分出库」时，缺料行整行不出库。
       </p>
       <template #footer>
         <n-space justify="end">
@@ -253,9 +258,8 @@
 import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  NButton, NInput, NInputNumber, NSelect, NDataTable, NModal, NForm, NFormItem, NSpace, useMessage
+  NButton, NInput, NInputNumber, NSelect, NDataTable, NModal, NForm, NFormItem, NSpace, NCheckbox, useMessage
 } from 'naive-ui'
-import * as XLSX from 'xlsx'
 import { api } from '@/shared/api'
 import type { BomLine, BomSummary, Category, Part } from '@/shared/api/types'
 import { parseBomText } from '@server/domain/bom/parser.js'
@@ -335,7 +339,18 @@ const filteredLines = computed(() => {
   return lines.value.filter((l) => l.status !== 'ok')
 })
 const readyLines = computed(() => lines.value.filter((l) => l.status === 'ok'))
-const readyQty = computed(() => readyLines.value.reduce((s, l) => s + l.required, 0))
+const shortRows = computed(() => lines.value.filter((l) => l.status === 'short'))
+// 缺料行默认整行不出库；开启「部分出库」后按可用量扣减
+const partialShort = ref(false)
+const consumePlan = computed(() => {
+  const plan = readyLines.value.map((l) => ({ line: l, qty: l.required }))
+  if (partialShort.value) {
+    for (const l of shortRows.value) plan.push({ line: l, qty: Math.min(l.required, l.available) })
+  }
+  return plan
+})
+const consumeQty = computed(() => consumePlan.value.reduce((s, x) => s + x.qty, 0))
+const totalRequired = computed(() => lines.value.reduce((s, l) => s + (Number(l.required) || 0), 0))
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   ok: { label: '齐套', cls: 'green' },
@@ -397,6 +412,7 @@ async function onFile(ev: Event) {
     if (/\.(csv|txt)$/i.test(file.name)) {
       bomText.value = new TextDecoder('utf-8').decode(buf)
     } else {
+      const XLSX = await import('xlsx')
       const wb = XLSX.read(new Uint8Array(buf), { type: 'array' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, raw: false, defval: '' })
@@ -596,17 +612,21 @@ const consuming = ref(false)
 const projectName = ref('')
 
 function openConsume() {
-  if (!readyLines.value.length) { message.warning('没有齐套行可以出库'); return }
+  if (!readyLines.value.length && !shortRows.value.length) { message.warning('没有可出库的行'); return }
+  // 只有缺料行时默认开启部分出库，避免用户以为没有可出的货
+  partialShort.value = !readyLines.value.length && shortRows.value.length > 0
   const d = new Date()
   projectName.value = `项目 ${d.getMonth() + 1}/${d.getDate()}`
   showConsume.value = true
 }
 async function doConsume() {
+  const plan = consumePlan.value
+  if (!plan.length) { message.warning('没有可出库的行'); return }
   consuming.value = true
   try {
     const r = await api.bomConsume(
-      readyLines.value.map((l) => ({
-        lineNo: l.lineNo, partId: l.partId, required: l.required, designators: l.designators
+      plan.map(({ line, qty }) => ({
+        lineNo: line.lineNo, partId: line.partId, required: qty, designators: line.designators
       })),
       projectName.value.trim()
     )
@@ -730,6 +750,8 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncNarrow))
 .consume-summary { background: var(--surface-2); border: 1px solid var(--outline); border-radius: 10px; padding: 10px 14px; }
 .cs-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; padding: 5px 0; }
 .cs-row span { color: var(--text-2); }
+.cs-row b.ok-text { color: var(--secondary); }
+.cs-row b.warn-text { color: var(--warning); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 @media (max-width: 1100px) {

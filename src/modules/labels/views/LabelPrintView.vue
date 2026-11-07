@@ -160,9 +160,16 @@ onMounted(async () => {
     categories.value = cats
     locations.value = locs
     const allParts: Part[] = (all as any).list || []
-    parts.value = ids.length
-      ? ids.map((id) => allParts.find((p) => p.id === id)).filter(Boolean) as Part[]
-      : allParts.slice(0, 40)
+    const total = Number((all as any).total) || allParts.length
+    if (ids.length) {
+      const found = ids.map((id) => allParts.find((p) => p.id === id)).filter(Boolean) as Part[]
+      const missing = ids.length - found.length
+      if (missing > 0) message.warning(`有 ${missing} 个所选器件未加载（库存超过 2000 条时可能发生），请分批打印`)
+      parts.value = found
+    } else {
+      parts.value = allParts.slice(0, 40)
+      if (total > 40) message.info(`未指定器件，默认打印前 40 项（共 ${total} 项）`)
+    }
     if (parts.value.length > 120) {
       parts.value = parts.value.slice(0, 120)
       message.warning('单次最多打印 120 张，已截断')

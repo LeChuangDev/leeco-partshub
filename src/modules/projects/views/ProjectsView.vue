@@ -110,14 +110,14 @@
               <span class="k-hint">覆盖 {{ summary.partKinds }} 种器件</span>
             </div>
             <div class="kpi card">
-              <span class="k-label">齐套率</span>
+              <span class="k-label">齐套率（件）</span>
               <b class="k-val" :class="summary.completeness >= 100 ? 'good' : summary.completeness >= 60 ? 'warn' : 'bad'">
                 {{ summary.completeness }}%
               </b>
               <span class="k-hint">已齐 {{ summary.readyQty }} / 需求 {{ summary.requiredQty }}</span>
             </div>
             <div class="kpi card">
-              <span class="k-label">缺料行</span>
+              <span class="k-label">缺料行（含未建档）</span>
               <b class="k-val" :class="shortageLines ? 'bad' : 'good'">{{ shortageLines }}</b>
               <span class="k-hint">缺口合计 {{ summary.shortageQty }} 件</span>
             </div>

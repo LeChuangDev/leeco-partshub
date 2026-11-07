@@ -215,7 +215,7 @@
           <template #icon><AppIcon name="plus" :size="14" /></template>
           添加参数
         </n-button>
-        <p class="dim" style="font-size: 12px; margin: 8px 0 0">参数模板决定新增元器件时显示的电气参数字段</p>
+        <p class="dim" style="font-size: 12px; margin: 8px 0 0">参数模板决定新增元器件时显示的电气参数字段；字段键自动生成（支持中文），重名会自动编号</p>
       </n-form>
       <template #footer>
         <n-space justify="end">
@@ -311,7 +311,10 @@ const rowSelection = { type: 'checkbox' as const }
 function onCheckedChange(keys: any[]) { checkedKeys.value = keys as string[] }
 function printLabels() {
   if (!checkedKeys.value.length) { message.warning('先勾选要打印的元器件'); return }
-  const ids = checkedKeys.value.slice(0, 100).join(',')
+  const MAX = 100
+  const total = checkedKeys.value.length
+  if (total > MAX) message.warning(`已选 ${total} 项，单次最多打印 ${MAX} 张，本次将打印前 ${MAX} 项`)
+  const ids = checkedKeys.value.slice(0, MAX).join(',')
   router.push({ name: 'labels', query: { ids } })
 }
 
@@ -319,6 +322,35 @@ const showCat = ref(false)
 const catLoading = ref(false)
 const catForm = ref<{ id: string | null; name: string; parentId: string | null; paramTemplate: any[] }>({ id: null, name: '', parentId: null, paramTemplate: [] })
 const typeOpts = [{ label: '文本', value: 'text' }, { label: '数字', value: 'number' }, { label: '枚举', value: 'enum' }]
+
+/**
+ * 生成参数模板 key：保留中文与字母数字，其余折叠为连字符。
+ * 中文标签（如「阻值」）不再被清空为空串；空值与重复值都会兜底，避免 key 冲突。
+ * 编辑已有分类时优先沿用原 key，保证已录入的 params 不因改名而失联。
+ */
+function buildParamTemplate(list: any[]) {
+  const used = new Set<string>()
+  return list
+    .filter((p) => p && String(p.label || '').trim())
+    .map((p) => {
+      const label = String(p.label).trim()
+      const base = label
+        .toLowerCase()
+        .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'param'
+      let key = String(p.key || '').trim()
+      if (!key || used.has(key)) {
+        key = base
+        let n = 2
+        while (used.has(key)) key = `${base}_${n++}`
+      }
+      used.add(key)
+      const out: any = { key, label, type: p.type || 'text' }
+      if (p.unit) out.unit = String(p.unit).trim()
+      if (Array.isArray(p.options) && p.options.length) out.options = p.options.filter(Boolean)
+      return out
+    })
+}
 
 const hasFilter = computed(() => !!(search.value || expr.value || tag.value || selectedCat.value || quickFilter.value !== 'all'))
 const selectedCatName = computed(() => categories.value.find((c) => c.id === selectedCat.value)?.name || '')
@@ -556,9 +588,7 @@ async function saveCat() {
   if (!catForm.value.name.trim()) { message.warning('请输入名称'); return }
   catLoading.value = true
   try {
-    const tpl = catForm.value.paramTemplate
-      .filter((p) => p.label.trim())
-      .map((p) => ({ key: p.label.trim().toLowerCase().replace(/[^a-z0-9]/g, ''), label: p.label.trim(), type: p.type }))
+    const tpl = buildParamTemplate(catForm.value.paramTemplate)
     if (catForm.value.id) {
       await api.updateCategory({ id: catForm.value.id, name: catForm.value.name, paramTemplate: tpl })
     } else {

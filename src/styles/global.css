@@ -3,6 +3,7 @@
    浅色为默认，[data-theme='dark'] 覆盖；所有组件共用这一套变量
    ============================================================ */
 :root {
+  color-scheme: light;
   /* 品牌色 */
   --primary: #5b6cff;
   --primary-hover: #7480ff;
@@ -42,6 +43,7 @@
 }
 
 [data-theme='dark'] {
+  color-scheme: dark;
   --primary-soft: rgba(91, 108, 255, .18);
   --primary-softer: rgba(91, 108, 255, .10);
   --bg: #0f1115;
@@ -73,6 +75,18 @@ body {
 a { color: inherit; text-decoration: none; }
 ::selection { background: var(--primary-soft); color: var(--primary-strong); }
 :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* Firefox 滚动条；WebKit 细则在各组件样式中维护 */
+* { scrollbar-width: thin; scrollbar-color: var(--outline-strong) transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 /* ---------------------------- 卡片 ---------------------------- */
 .card {
