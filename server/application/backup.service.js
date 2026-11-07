@@ -4,12 +4,14 @@
 
 import { kvGetJSON, kvPutJSON } from '../infrastructure/kv/index.js'
 import { nowISO } from '../domain/models.js'
+import { appendAudit } from '../repositories/audit.repository.js'
 import { listCategories } from '../repositories/category.repository.js'
 import { idxAdd, idxReset, touchMeta } from '../repositories/kv-index.js'
 import { listLocations } from '../repositories/location.repository.js'
 import { listPartsRaw } from '../repositories/part.repository.js'
 import { listStock } from '../repositories/stock.repository.js'
 import { listTransactions } from '../repositories/transaction.repository.js'
+import { exportAudits } from '../repositories/audit.repository.js'
 
 export async function exportAll(kv) {
   const categories = await listCategories(kv)
@@ -21,6 +23,7 @@ export async function exportAll(kv) {
     stocks.push(...batches)
   }
   const transactions = await listTransactions(kv, null, 100000)
+  const audits = await exportAudits(kv)
   const meta = (await kvGetJSON(kv, 'meta:info')) || { version: 1 }
   // 项目与其 BOM 行一并备份，避免恢复后项目表丢失
   const projects = []
@@ -40,68 +43,133 @@ export async function exportAll(kv) {
     stocks,
     locations,
     transactions,
+    audits,
     projects,
     projectBoms,
     meta
   }
 }
 
-/** 全量恢复：清空对应索引后按记录重建；不做增量合并，调用方需确认覆盖语义 */
+/**
+ * 全量恢复：先在内存算出完整目标状态，再一次性提交。
+ * 提交前保存受影响键的原值，任一步失败即整体回退，避免「恢复一半」的脏库。
+ * 审计日志是 append-only，不参与覆盖，恢复动作本身也会留痕。
+ */
 export async function importAll(kv, data) {
-  const rebuild = async (list, prefix, indexKey, idKey = 'id') => {
-    await idxReset(kv, indexKey)
-    for (const item of list || []) {
-      await kvPutJSON(kv, `${prefix}:${item[idKey]}`, item)
-      await idxAdd(kv, indexKey, item[idKey])
-    }
+  const writes = new Map() // key -> value | null（null 表示删除）
+  const put = (key, value) => writes.set(key, value)
+  const drop = (key) => { if (!writes.has(key)) writes.set(key, null) }
+  const index = new Map()
+  const addIdx = (key, id) => {
+    const arr = index.get(key) || []
+    if (!arr.includes(id)) arr.push(id)
+    index.set(key, arr)
   }
-  await rebuild(data.categories, 'category', 'index:categories')
-  await rebuild(data.locations, 'location', 'index:locations')
 
-  // parts 及其分类/标签索引
-  await idxReset(kv, 'index:parts')
+  // 清理可能残留的二级索引（原实现只重置固定索引，旧分类/标签索引会留下脏 ID）
+  for (const prefix of ['index:parts:cat:', 'index:parts:tag:', 'index:stock:part:', 'index:txn:part:']) {
+    for (const key of await listKeys(kv, prefix)) drop(key)
+  }
+
+  for (const c of data.categories || []) {
+    put(`category:${c.id}`, c)
+    addIdx('index:categories', c.id)
+  }
+  put('index:categories', index.get('index:categories') || [])
+
+  for (const l of data.locations || []) {
+    put(`location:${l.id}`, l)
+    addIdx('index:locations', l.id)
+  }
+  put('index:locations', index.get('index:locations') || [])
+
   for (const p of data.parts || []) {
-    await kvPutJSON(kv, `part:${p.id}`, p)
-    await idxAdd(kv, 'index:parts', p.id)
-    if (p.categoryId) await idxAdd(kv, `index:parts:cat:${p.categoryId}`, p.id)
-    for (const t of p.tags || []) await idxAdd(kv, `index:parts:tag:${t}`, p.id)
+    put(`part:${p.id}`, p)
+    addIdx('index:parts', p.id)
+    if (p.categoryId) addIdx(`index:parts:cat:${p.categoryId}`, p.id)
+    for (const t of p.tags || []) addIdx(`index:parts:tag:${t}`, p.id)
   }
+  put('index:parts', index.get('index:parts') || [])
 
-  await idxReset(kv, 'index:transactions')
   for (const t of data.transactions || []) {
-    await kvPutJSON(kv, `transaction:${t.id}`, t)
-    await idxAdd(kv, 'index:transactions', t.id)
-    await idxAdd(kv, `index:txn:part:${t.partId}`, t.id)
+    put(`transaction:${t.id}`, t)
+    addIdx('index:transactions', t.id)
+    if (t.partId) addIdx(`index:txn:part:${t.partId}`, t.id)
   }
+  put('index:transactions', index.get('index:transactions') || [])
 
-  // stocks 及其按 part 索引
-  for (const p of data.parts || []) await idxReset(kv, `index:stock:part:${p.id}`)
   for (const s of data.stocks || []) {
-    await kvPutJSON(kv, `stock:${s.id}`, s)
-    await idxAdd(kv, `index:stock:part:${s.partId}`, s.id)
+    put(`stock:${s.id}`, s)
+    addIdx(`index:stock:part:${s.partId}`, s.id)
   }
 
-  // 项目与项目 BOM
-  await idxReset(kv, 'index:projects')
   for (const p of data.projects || []) {
-    await kvPutJSON(kv, `project:${p.id}`, p)
-    await idxAdd(kv, 'index:projects', p.id)
+    put(`project:${p.id}`, p)
+    addIdx('index:projects', p.id)
   }
+  put('index:projects', index.get('index:projects') || [])
   for (const doc of data.projectBoms || []) {
-    if (doc && doc.projectId) await kvPutJSON(kv, `projectbom:${doc.projectId}`, doc)
+    if (doc && doc.projectId) put(`projectbom:${doc.projectId}`, doc)
   }
-  await touchMeta(kv)
-  return {
-    ok: true,
-    counts: {
-      categories: (data.categories || []).length,
-      parts: (data.parts || []).length,
-      stocks: (data.stocks || []).length,
-      locations: (data.locations || []).length,
-      transactions: (data.transactions || []).length,
-      projects: (data.projects || []).length
+
+  // 二级索引中有值的一律覆盖掉上面的 drop
+  for (const [key, ids] of index) {
+    if (key !== 'index:categories' && key !== 'index:locations' && key !== 'index:parts' &&
+        key !== 'index:transactions' && key !== 'index:projects') put(key, ids)
+  }
+
+  const meta = (await kvGetJSON(kv, 'meta:info')) || { version: 1 }
+  put('meta:info', { ...meta, lastUpdated: nowISO() })
+
+  const batch = [...writes.entries()].map(([key, value]) => ({ key, value }))
+  const snapshot = []
+  for (const w of batch) snapshot.push({ key: w.key, raw: await kv.get(w.key) })
+
+  try {
+    for (const w of batch) {
+      if (w.value === null) await kv.del(w.key)
+      else await kvPutJSON(kv, w.key, w.value)
     }
+  } catch (e) {
+    // 回滚已写入的键；失败时附加原因，便于排查存储适配器问题
+    for (const item of snapshot) {
+      try {
+        if (item.raw == null) await kv.del(item.key)
+        else await kv.put(item.key, item.raw)
+      } catch (rollbackError) {
+        console.error('[restore] rollback failed for', item.key, rollbackError)
+      }
+    }
+    throw new Error(`恢复失败，已回滚到恢复前状态：${String((e && e.message) || e)}`)
   }
+
+  const counts = {
+    categories: (data.categories || []).length,
+    parts: (data.parts || []).length,
+    stocks: (data.stocks || []).length,
+    locations: (data.locations || []).length,
+    transactions: (data.transactions || []).length,
+    projects: (data.projects || []).length
+  }
+  await appendAudit(kv, {
+    action: 'backup.restore', source: 'restore',
+    quantity: 0,
+    detail: `覆盖恢复：${counts.parts} 器件 / ${counts.stocks} 批次 / ${counts.transactions} 流水`
+  })
+  return { ok: true, counts, keysWritten: batch.length }
+}
+
+/** 按前缀列出键（兼容不同 KV 实现的分页游标） */
+async function listKeys(kv, prefix) {
+  const keys = []
+  let cursor = null
+  for (let page = 0; page < 20; page++) {
+    const res = await kv.list(prefix, { limit: 1000, cursor: cursor || undefined })
+    keys.push(...(res.keys || []))
+    if (res.done || !res.cursor) break
+    cursor = res.cursor
+  }
+  return [...new Set(keys)]
 }
 
 /* --------------------------- 恢复前校验与预演 --------------------------- */

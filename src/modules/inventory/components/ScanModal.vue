@@ -386,11 +386,13 @@ async function operate(type: 'in' | 'out') {
         orderNo: '',
         locationId: last?.locationId || null,
         note: '扫码入库',
-        reason: '扫码入库'
+        reason: '扫码入库',
+        merge: true,
+        source: 'scan'
       })
       message.success(`已入库 ${n} 件`)
     } else {
-      await api.stockOut({ partId: part.value.id, quantity: n, reason: '扫码出库' })
+      await api.stockOut({ partId: part.value.id, quantity: n, reason: '扫码出库', source: 'scan' })
       message.success(`已出库 ${n} 件`)
     }
     emitDataChanged()

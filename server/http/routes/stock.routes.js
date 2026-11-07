@@ -3,7 +3,8 @@
 
 import { json, readBody } from '../http-utils.js'
 import { stockIn, stockOut } from '../../application/stock.service.js'
-import { listStock, moveStock } from '../../repositories/stock.repository.js'
+import { listStock } from '../../repositories/stock.repository.js'
+import { moveStock } from '../../application/inventory.service.js'
 
 export async function handleStock({ request, method, url, kv, seg }) {
   if (seg[1] === 'in' && method === 'POST') {

@@ -18,12 +18,12 @@ Leeco PartsHub 采用「前端垂直模块 + 服务端分层」的单仓结构�
 │  │  ├─ auth/                   # 登录、会话 store
 │  │  ├─ dashboard/              # 可自定义看板
 │  │  ├─ catalog/                # 元器件主数据
-│  │  ├─ inventory/              # 库存、位置、扫码、快速入库
+│  │  ├─ inventory/              # 库存、位置、扫码、快速入库（index.ts 对外暴露移动位置弹窗）
 │  │  ├─ bom/                    # BOM 齐套
 │  │  ├─ projects/               # 项目 BOM
 │  │  ├─ procurement/            # 多渠道订单导入
 │  │  ├─ labels/                 # 标签打印
-│  │  └─ platform/               # 备份与设置
+│  │  └─ platform/               # 备份与设置、操作日志
 │  ├─ shared/                    # 跨模块共享（不得依赖 modules）
 │  │  ├─ api/                    # 传输层、资源端点、DTO
 │  │  ├─ ui/                     # 设计系统组件与图表
@@ -31,9 +31,9 @@ Leeco PartsHub 采用「前端垂直模块 + 服务端分层」的单仓结构�
 │  │  └─ utils/                  # 事件总线等无状态工具
 │  └─ styles/global.css          # 设计令牌与全局样式
 ├─ server/                       # 服务端（只依赖 Web 标准 API）
-│  ├─ domain/                    # 纯业务规则：模型、归一化、二维码、扫码、BOM 解析
-│  ├─ application/               # 用例编排：目录查询、出入库、齐套、项目、导入、统计、备份
-│  ├─ repositories/              # KV 持久化：分类、器件、批次、位置、流水、索引
+│  ├─ domain/                    # 纯业务规则：模型、归一化、二维码、扫码、BOM 解析/汇总、参数模板、审计枚举
+│  ├─ application/               # 用例编排：目录、出入库、移库、齐套、项目、导入/撤销、统计、备份
+│  ├─ repositories/              # KV 持久化：分类、器件、批次、位置、流水、审计、索引
 │  ├─ infrastructure/            # KV 适配器（内存 / EdgeOne）与种子数据
 │  └─ http/                      # 路由表、鉴权、统一响应、各资源路由
 ├─ functions/api/[...path].js    # EdgeOne Pages 边缘入口（仅做请求转发）
@@ -98,6 +98,8 @@ app  →  modules  →  shared
 | `location:{id}` / `index:locations` | 存储位置 |
 | `transaction:{id}` / `index:transactions` / `index:txn:part:{partId}` | 库存流水 |
 | `project:{id}` / `index:projects` / `projectbom:{projectId}` | 项目与项目 BOM |
+| `audit:{id}` / `index:audit` | 只追加的操作日志（恢复备份不清空） |
+| `importbatch:{id}` / `index:importbatches` | 导入批次快照，用于 10 分钟内撤销 |
 
 所有写入通过 `repositories/*` 完成，索引与主记录在同一请求内更新；恢复备份时按记录重建索引。
 

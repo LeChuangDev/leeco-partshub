@@ -263,6 +263,11 @@ export function newTransaction(input = {}) {
     projectId: input.projectId || null,
     projectName: input.projectName || '',
     operator: input.operator || 'system',
+    // 审计扩展：来源、导入批次、变动前后数量，便于追溯与按批次撤销
+    source: input.source || 'manual',
+    batchId: input.batchId || null,
+    beforeQty: input.beforeQty == null ? null : Number(input.beforeQty),
+    afterQty: input.afterQty == null ? null : Number(input.afterQty),
     createdAt: nowISO()
   }
 }

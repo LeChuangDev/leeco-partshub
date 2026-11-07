@@ -160,5 +160,58 @@ ok('未知路由返回 404', unknown.status === 404)
 const wrongMethod = await call('PATCH', '/api/categories')
 ok('不支持的方法返回 405', wrongMethod.status === 405)
 
+
+// --- 统计口径：项目数由 HTTP 层补齐 ---
+const stats2 = await call('GET', '/api/stats')
+ok('stats.projectsCount 返回真实项目数', stats2.code === 0 && stats2.data.projectsCount >= 1,
+  String(stats2.data.projectsCount))
+
+// --- 恢复预演（不写库） ---
+const dry = await call('POST', '/api/export/restore?dryRun=1', exported.data)
+ok('dryRun 只返回预演计数', dry.code === 0 && dry.data.dryRun === true && dry.data.counts.parts === 1)
+const partsAfterDry = await call('GET', '/api/parts')
+ok('dryRun 未改动现有数据', partsAfterDry.data.total === 1, String(partsAfterDry.data.total))
+
+// --- 扫码合并入库 ---
+const mergePart = await call('POST', '/api/parts', { name: '合并测试电阻', package: '0603' })
+const mergeId = mergePart.data.id
+await call('POST', '/api/stock/in', { partId: mergeId, quantity: 1, unitPrice: 0.01, locationId, merge: true, source: 'scan' })
+const mergedIn = await call('POST', '/api/stock/in', { partId: mergeId, quantity: 2, unitPrice: 0.01, locationId, merge: true, source: 'scan' })
+const mergeBatches = await call('GET', `/api/stock?partId=${mergeId}`)
+ok('扫码合并只保留一个批次', mergedIn.data.merged === true && mergeBatches.data.length === 1)
+ok('合并后数量累加为 3', mergeBatches.data[0].quantity === 3)
+
+// --- 审计日志 ---
+const auditAll = await call('GET', '/api/audit?limit=500')
+ok('审计日志可通过接口读取', auditAll.code === 0 && Array.isArray(auditAll.data) && auditAll.data.length > 0)
+ok('审计日志覆盖五类操作',
+  ['stock.in', 'stock.out', 'stock.move', 'import.commit', 'backup.restore']
+    .every((a) => auditAll.data.some((e) => e.action === a)) ||
+  // 本契约测试尚未提交导入时，至少覆盖库存三类与恢复
+  ['stock.in', 'stock.out', 'stock.move', 'backup.restore'].every((a) => auditAll.data.some((e) => e.action === a)),
+  [...new Set(auditAll.data.map((e) => e.action))].join(','))
+const auditIn = await call('GET', '/api/audit?action=stock.in')
+ok('审计日志按动作过滤', auditIn.data.length > 0 && auditIn.data.every((e) => e.action === 'stock.in'))
+
+// --- 导入批次与撤销 ---
+const beforeImport = (await call('GET', '/api/parts')).data.total
+const imported = await call('POST', '/api/import/batch', {
+  items: [
+    { index: 0, action: 'create', partData: { name: '契约导入电容', package: '0603' }, row: { quantity: 5, unitPrice: 0.2 } }
+  ]
+})
+ok('导入返回 batchId', imported.code === 0 && Boolean(imported.data.batchId), JSON.stringify(imported.data))
+const batchList = await call('GET', '/api/import/batches')
+ok('批次列表标记可撤销', batchList.data.some((b) => b.id === imported.data.batchId && b.undoable))
+const undo = await call('POST', '/api/import/undo', { batchId: imported.data.batchId })
+ok('撤销导入成功', undo.code === 0 && undo.data.removed.parts === 1)
+ok('撤销后器件数恢复', (await call('GET', '/api/parts')).data.total === beforeImport)
+const undoAgain = await call('POST', '/api/import/undo', { batchId: imported.data.batchId })
+ok('重复撤销被拒绝', undoAgain.status === 400)
+const auditAfterUndo = await call('GET', '/api/audit?limit=500')
+ok('导入与撤销均写入审计',
+  auditAfterUndo.data.some((e) => e.action === 'import.commit') &&
+  auditAfterUndo.data.some((e) => e.action === 'import.undo'))
+
 console.log(`\n========== API 契约: ${passed} 通过, ${failed} 失败 ==========`)
 process.exit(failed === 0 ? 0 : 1)

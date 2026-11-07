@@ -9,6 +9,10 @@ export interface StockInPayload {
   quantity: number
   unit?: string
   locationId?: string | null
+  /** 扫码连续入库：同位置 + 同单价并入既有批次，避免碎片化 */
+  merge?: boolean
+  source?: string
+  batchId?: string
   unitPrice?: number
   supplier?: string
   orderNo?: string
@@ -19,6 +23,7 @@ export interface StockInPayload {
 export interface StockOutPayload {
   partId: string
   quantity: number
+  source?: string
   stockId?: string
   reason?: string
   note?: string

@@ -165,6 +165,11 @@ export interface BomSummary {
   okLines: number
   shortLines: number
   emptyLines: number
+  unlinkedLines: number
+  shortageLines: number
+  shortageLinesIncludingUnlinked: number
+  multiple?: number
+  buildQty?: number
   requiredQty: number
   shortageQty: number
   readyQty: number
@@ -246,4 +251,37 @@ export interface ProjectConsumeResult {
   success: { partId: string; name?: string; quantity: number; designators: string[]; transactions: number }[]
   failed: { partId: string | null; name?: string; model?: string; quantity: number; shortage?: number; msg: string }[]
   projectName: string
+}
+
+
+/** 审计日志事件（只读，恢复备份不会清空） */
+export interface AuditEvent {
+  id: string
+  action: string
+  source: string
+  partId: string | null
+  partName: string
+  quantity: number
+  beforeQty: number | null
+  afterQty: number | null
+  batchId: string | null
+  orderNo: string
+  reason: string
+  operator: string
+  detail: string
+  createdAt: string
+}
+
+/** 导入批次，用于 10 分钟内撤销 */
+export interface ImportBatch {
+  id: string
+  createdAt: string
+  operator: string
+  itemCount: number
+  createdPartIds: string[]
+  createdStockIds: string[]
+  createdTransactionIds: string[]
+  undone: boolean
+  undoneAt?: string
+  undoable: boolean
 }

@@ -62,6 +62,19 @@
       </div>
     </div>
 
+    <!-- 导入撤销窗口 -->
+    <div v-if="lastBatchId" class="undo-bar card">
+      <AppIcon name="clock" :size="16" />
+      <span>
+        本次导入已提交（批次 <code>{{ lastBatchId }}</code>），
+        <b v-if="undoable">{{ undoLeftText }}</b>
+        <b v-else>撤销窗口已结束</b>
+        内可一键撤销：删除本次新建的器件、批次与流水，不影响导入前的数据。
+      </span>
+      <span class="flex-1" />
+      <n-button size="small" :disabled="!undoable" :loading="undoBusy" @click="confirmUndo">撤销本次导入</n-button>
+    </div>
+
     <!-- 预览 -->
     <div v-if="items.length" class="card table-card mt-16">
       <div class="imp-head">
@@ -119,7 +132,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NUpload, NUploadDragger, NSelect, NButton, NDataTable, NAlert, NTag, NInput, useDialog, useMessage
@@ -128,6 +141,7 @@ import { api } from '@/shared/api'
 import { mapRow, detectPlatform, PLATFORMS } from '@server/domain/import-map.js'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import PageHeader from '@/shared/ui/PageHeader.vue'
+import { emitDataChanged } from '@/shared/utils/events'
 import type { Location } from '@/shared/api/types'
 
 const message = useMessage()
@@ -141,6 +155,18 @@ const checked = ref<(string | number)[]>([])
 const defaultLoc = ref<string | null>(null)
 const committing = ref(false)
 const lastSummary = ref<any>(null)
+const lastBatchId = ref<string | null>(null)
+const batchAt = ref(0)
+const clock = ref(Date.now())
+const undoBusy = ref(false)
+let clockTimer: ReturnType<typeof setInterval> | null = null
+const undoRemaining = computed(() => Math.max(0, 10 * 60 * 1000 - (clock.value - batchAt.value)))
+const undoable = computed(() => !!lastBatchId.value && undoRemaining.value > 0)
+const undoLeftText = computed(() => {
+  const total = Math.ceil(undoRemaining.value / 1000)
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+})
+onBeforeUnmount(() => { if (clockTimer) clearInterval(clockTimer) })
 
 const locations = ref<Location[]>([])
 const locOptions = computed(() => locations.value.map((l) => ({ label: l.name + ' (' + l.code + ')', value: l.id })))
@@ -284,7 +310,7 @@ function confirmCommit() {
     content: () => h('div', { style: 'font-size:13px;line-height:1.9' }, [
       h('p', { style: 'margin:0 0 6px' }, `将写入 ${picked.length} 行：新建 ${creates} 个器件，匹配入库 ${matches} 行。`),
       h('p', { style: 'margin:0 0 6px' }, `合计金额约 ¥${totalAmount.value.toFixed(2)}；默认库位：${loc}。`),
-      h('p', { style: 'margin:0;color:#d97706' }, '提交后会立即写入库存流水，当前版本不支持一键撤销；请先确认预览与勾选无误。')
+      h('p', { style: 'margin:0;color:#d97706' }, '提交后会立即写入库存流水；10 分钟内可在结果栏一键撤销本次导入。')
     ]),
     positiveText: '确认入库',
     negativeText: '再检查一下',
@@ -301,6 +327,13 @@ async function doCommit() {
       action: checked.value.includes(it.index) ? it.action : 'skip'
     }))
     const r: any = await api.importCommit(out)
+    if (r.batchId) {
+      lastBatchId.value = r.batchId
+      batchAt.value = Date.now()
+      clock.value = batchAt.value
+      if (clockTimer) clearInterval(clockTimer)
+      clockTimer = setInterval(() => { clock.value = Date.now() }, 1000)
+    }
     if (r.ok) {
       lastSummary.value = r.summary
       message.success(`导入完成：新建 ${r.summary.created}，匹配 ${r.summary.matched}`)
@@ -314,6 +347,28 @@ async function doCommit() {
     }
   } catch (e: any) { message.error(e.message) }
   finally { committing.value = false }
+}
+
+
+async function confirmUndo() {
+  if (!lastBatchId.value || !undoable.value) return
+  const id = lastBatchId.value
+  dialog.warning({
+    title: '撤销本次导入？',
+    content: `将删除本次导入新建的器件、库存批次与流水（批次 ${id}）。导入前已存在的数据不受影响，操作不可恢复。`,
+    positiveText: '确认撤销',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      undoBusy.value = true
+      try {
+        const r: any = await api.importUndo(id)
+        message.success(`已撤销：${r.removed.parts} 个器件 / ${r.removed.stocks} 个批次 / ${r.removed.transactions} 条流水`)
+        lastBatchId.value = null
+        emitDataChanged()
+      } catch (e: any) { message.error(e.message || '撤销失败') }
+      finally { undoBusy.value = false }
+    }
+  })
 }
 
 function goParts() { router.push({ name: 'parts' }) }
@@ -337,6 +392,14 @@ onMounted(async () => { try { locations.value = await api.listLocations() } catc
 </script>
 
 <style scoped>
+.undo-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 16px; margin-bottom: 16px; font-size: 12.5px; color: var(--text-2);
+  border-left: 3px solid var(--secondary);
+}
+.undo-bar code { font-family: var(--mono); color: var(--text-1); }
+.undo-bar b { color: var(--primary); font-family: var(--mono); }
+
 .import-page { max-width: 1400px; margin: 0 auto; }
 
 /* 流程指示 */

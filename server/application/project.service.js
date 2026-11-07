@@ -9,7 +9,8 @@ import { listPartsRaw } from '../repositories/part.repository.js'
 import { listStock } from '../repositories/stock.repository.js'
 import { stockOut } from './stock.service.js'
 import { newProject, newProjectLine, nowISO, PROJECT_STATUS } from '../domain/models.js'
-import { matchBom, summarizeBom, parseBomText, normalizeBomRow } from './bom.service.js'
+import { matchBom, parseBomText, normalizeBomRow } from './bom.service.js'
+import { summarizeBom } from '../domain/bom/summary.js'
 
 const IDX = 'index:projects'
 const docKey = (id) => `projectbom:${id}`
@@ -319,7 +320,6 @@ export async function analyzeProject(kv, projectId, opts = {}) {
 
   const summary = summarizeBom(out)
   summary.multiple = multiple
-  summary.unlinkedLines = out.filter((l) => l.status === 'unlinked').length
   summary.buildQty = multiple
   return { project, lines: out, summary, buildQty: multiple }
 }

@@ -86,7 +86,9 @@
 
 | 方法 | 路径 | 参数 |
 | --- | --- | --- |
-| POST | `/api/import/batch` | `{ rows }` 返回去重计划；`{ items }` 直接提交 |
+| POST | `/api/import/batch` | `{ rows }` 返回去重计划；`{ items }` 直接提交，响应含 `batchId` |
+| GET | `/api/import/batches?limit=` | 最近导入批次，含 `undoable`（10 分钟窗口内且未撤销） |
+| POST | `/api/import/undo` | `{ batchId }` 撤销本次导入新建的器件、批次与流水；超时或重复撤销返回 `400` |
 
 ## 搜索与统计
 
@@ -95,10 +97,36 @@
 | GET | `/api/search?q=&limit=` | 一次返回 `{ parts, locations, categories, total }` |
 | GET | `/api/stats?period=week|month|year` | 库存总量/货值、预警、缺货、呆滞、趋势与分布 |
 | GET | `/api/meta` | 版本与最后更新时间 |
+| GET | `/api/audit` | 操作日志，支持 `action / source / partId / q / limit` 过滤 |
+
+审计动作：`stock.in`、`stock.out`、`stock.move`、`import.commit`、`import.undo`、`backup.restore`。
+来源：`manual`、`scan`、`bom`、`project`、`import`、`restore`、`system`。
 
 ## 备份
 
 | 方法 | 路径 | 参数 |
 | --- | --- | --- |
-| GET | `/api/export/all` | 导出分类、器件、批次、位置、流水、项目与项目 BOM |
-| POST | `/api/export/restore` | 备份对象，**覆盖**现有数据并重建索引 |
+| GET | `/api/export/all` | 导出分类、器件、批次、位置、流水、项目、项目 BOM 与审计日志 |
+| POST | `/api/export/restore?dryRun=1` | 只做结构校验与引用检查，返回 `counts` / `warnings`，**不写库** |
+| POST | `/api/export/restore` | 校验通过后才覆盖写入；先快照受影响的键，任一步失败整体回滚 |
+
+恢复的校验规则：顶层必须为对象，`parts` 必须为数组，所有集合元素必须有唯一字符串 `id`；
+孤儿引用只产生 `warnings`，不阻断写入。审计日志是 append-only，恢复不会清空已有日志，
+恢复动作本身会追加一条 `backup.restore`。
+
+
+## 统计口径（唯一实现：`server/domain/bom/summary.js`）
+
+前端粘贴预览、BOM 齐套、项目 BOM 三处共用同一个 `summarizeBom()`，口径不再漂移。
+
+| 字段 | 计算方式 | 口径 | 展示名 |
+| --- | --- | --- | --- |
+| `completeness` | `Σ min(需求, 可用) / Σ 需求` | 件数（缺料行按可用量给部分 credit） | 齐套率（件） |
+| `coverage` | `已绑定器件行数 / 总行数` | 行 | 匹配率（行） |
+| `missingLines` | `总行数 - 已绑定器件行数` | 行 | 未建档行 |
+| `shortageLines` | `short + empty` | 行 | 缺料行（不含未建档） |
+| `shortageLinesIncludingUnlinked` | `short + empty + missingLines` | 行 | 缺料行（含未建档） |
+| `projectsCount` | 项目索引长度 | 个 | 项目数（由 HTTP 层在 `/api/stats` 补齐） |
+
+出库语义：`POST /api/bom/consume` 按提交行扣减；BOM 页默认只提交 `ok` 行，
+勾选「部分出库」后才把 `short` 行按可用量纳入，确认弹窗会展示「需求 / 本次出库 / 仍未覆盖」。

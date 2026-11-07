@@ -214,7 +214,7 @@ async function confirm() {
     await api.stockIn({
       partId, quantity: qty.value, unit: unit.value, unitPrice: price.value,
       supplier: supplier.value || '', orderNo: orderNo.value.trim(),
-      locationId: locId.value, note: note.value.trim(), reason: note.value.trim() || '入库'
+      locationId: locId.value, note: note.value.trim(), reason: note.value.trim() || '入库', source: 'manual'
     })
     message.success('入库成功')
     emitDataChanged()

@@ -15,6 +15,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'bom', name: 'bom', component: () => import('@/modules/bom/views/BomView.vue'), meta: { title: 'BOM 齐套', icon: 'bom' } },
       { path: 'locations', name: 'locations', component: () => import('@/modules/inventory/views/LocationsView.vue'), meta: { title: '存储位置', icon: 'location' } },
       { path: 'import', name: 'import', component: () => import('@/modules/procurement/views/ImportView.vue'), meta: { title: '订单导入', icon: 'import' } },
+      { path: 'audit', name: 'audit', component: () => import('@/modules/platform/views/AuditView.vue'), meta: { title: '操作日志', icon: 'clock' } },
       { path: 'backup', name: 'backup', component: () => import('@/modules/platform/views/BackupView.vue'), meta: { title: '备份与设置', icon: 'settings' } }
     ]
   },

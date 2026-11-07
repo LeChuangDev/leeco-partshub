@@ -74,7 +74,8 @@ const groups = [
       { label: '存储位置', keys: ['Alt', '5'] },
       { label: '订单导入', keys: ['Alt', '6'] },
       { label: '备份与设置', keys: ['Alt', '7'] },
-      { label: '打印标签', keys: ['Alt', '8'] }
+      { label: '打印标签', keys: ['Alt', '8'] },
+      { label: '操作日志', keys: ['Alt', '9'] }
     ]
   },
   {

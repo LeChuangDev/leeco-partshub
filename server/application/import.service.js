@@ -2,10 +2,14 @@
 // 服务器端导入逻辑：根据归一化行做多级去重匹配，生成导入计划（预览），再提交写入。
 // 匹配优先级：① 平台料号精确 → ② 原厂型号 + 封装 → ③ 参数 + 封装（疑似重复，提示用户确认）
 
+import { kvGetJSON, kvPutJSON } from '../infrastructure/kv/index.js'
+import { nowISO, uid } from '../domain/models.js'
 import { listCategories } from '../repositories/category.repository.js'
 import {
-  createPart, findPartByModelPackage, findPartBySupplier, listPartsRaw
+  createPart, deletePart, findPartByModelPackage, findPartBySupplier, listPartsRaw
 } from '../repositories/part.repository.js'
+import { idxAdd, idxGet, idxRemove } from '../repositories/kv-index.js'
+import { appendAudit } from '../repositories/audit.repository.js'
 import { stockIn } from './stock.service.js'
 import {
   normalizePackage, normalizeParams, familyOfKey, parseSI,
@@ -128,9 +132,14 @@ function summarize(items) {
 }
 
 // 提交导入：items 来自 planImport 的结果（用户可编辑 locationId / categoryId / 是否勾选）
+// 每次提交生成 batchId，记录本次创建的器件 / 批次 / 流水，供 10 分钟内一键撤销。
 export async function commitImport(kv, items, opts = {}) {
   const operator = opts.operator || 'import'
+  const batchId = uid('batch')
   const created = []
+  const createdPartIds = []
+  const createdStockIds = []
+  const createdTransactionIds = []
   const matched = []
   const errors = []
   for (const it of items) {
@@ -140,20 +149,117 @@ export async function commitImport(kv, items, opts = {}) {
     const supplier = PLATFORM_SHORT[it.row?.platform] || it.row?.platform || ''
     const unitPrice = Number(it.row?.unitPrice) || 0
     const quantity = Number(it.row?.quantity) || 0
+    const inOpts = {
+      locationId: locId, quantity, unitPrice, supplier, orderNo, operator,
+      source: 'import', batchId
+    }
     try {
       if (it.action === 'match' && it.partId) {
-        await stockIn(kv, it.partId, { locationId: locId, quantity, unitPrice, supplier, orderNo, operator })
+        const r = await stockIn(kv, it.partId, inOpts)
+        if (!r.ok) throw new Error(r.msg || '入库失败')
         matched.push(it.partId)
+        if (r.stock?.id) createdStockIds.push(r.stock.id)
+        if (r.transaction?.id) createdTransactionIds.push(r.transaction.id)
       } else if (it.action === 'create') {
         const part = await createPart(kv, { ...(it.partData || {}), categoryId: it.categoryId || it.partData?.categoryId || null })
-        await stockIn(kv, part.id, { locationId: locId, quantity, unitPrice, supplier, orderNo, operator })
+        const r = await stockIn(kv, part.id, inOpts)
+        if (!r.ok) throw new Error(r.msg || '入库失败')
         created.push(part.id)
+        createdPartIds.push(part.id)
+        if (r.stock?.id) createdStockIds.push(r.stock.id)
+        if (r.transaction?.id) createdTransactionIds.push(r.transaction.id)
       }
     } catch (e) {
       errors.push({ index: it.index, msg: String(e && e.message || e) })
     }
   }
-  return { ok: errors.length === 0, created, matched, errors, summary: { created: created.length, matched: matched.length, errors: errors.length } }
+
+  const batch = {
+    id: batchId,
+    createdAt: nowISO(),
+    operator,
+    itemCount: items.filter((i) => i.action !== 'skip').length,
+    createdPartIds,
+    createdStockIds,
+    createdTransactionIds,
+    undone: false
+  }
+  await kvPutJSON(kv, `importbatch:${batchId}`, batch)
+  await idxAdd(kv, 'index:importbatches', batchId)
+  await appendAudit(kv, {
+    action: 'import.commit', source: 'import', batchId, operator,
+    quantity: 0,
+    detail: `导入 ${batch.itemCount} 行：新建 ${createdPartIds.length} 个器件、${createdStockIds.length} 个批次，失败 ${errors.length} 行`
+  })
+
+  return {
+    ok: errors.length === 0, created, matched, errors, batchId,
+    summary: { created: created.length, matched: matched.length, errors: errors.length }
+  }
+}
+
+export const UNDO_WINDOW_MS = 10 * 60 * 1000
+
+/** 列出最近的导入批次，供前端展示「撤销本次导入」 */
+export async function listImportBatches(kv, limit = 20) {
+  const ids = await idxGet(kv, 'index:importbatches')
+  const out = []
+  for (const id of ids.slice(-Math.min(limit, 100))) {
+    const doc = await kvGetJSON(kv, `importbatch:${id}`)
+    if (doc) out.push({ ...doc, undoable: !doc.undone && Date.now() - new Date(doc.createdAt).getTime() <= UNDO_WINDOW_MS })
+  }
+  return out.reverse()
+}
+
+/**
+ * 撤销一次导入：删除本次新建的批次、流水与器件，并从索引中摘除。
+ * 只回滚「本批次新建」的对象，不会误删导入前已存在的库存；超过 10 分钟拒绝执行。
+ */
+export async function undoImport(kv, batchId) {
+  if (!batchId) return { ok: false, msg: '缺少 batchId' }
+  const doc = await kvGetJSON(kv, `importbatch:${batchId}`)
+  if (!doc) return { ok: false, msg: '找不到该导入批次' }
+  if (doc.undone) return { ok: false, msg: '该批次已撤销' }
+  if (Date.now() - new Date(doc.createdAt).getTime() > UNDO_WINDOW_MS) {
+    return { ok: false, msg: '超过 10 分钟，已不可撤销' }
+  }
+
+  let removedTransactions = 0
+  for (const txnId of doc.createdTransactionIds || []) {
+    const txn = await kvGetJSON(kv, `transaction:${txnId}`)
+    await kv.del(`transaction:${txnId}`)
+    await idxRemove(kv, 'index:transactions', txnId)
+    if (txn?.partId) await idxRemove(kv, `index:txn:part:${txn.partId}`, txnId)
+    removedTransactions++
+  }
+
+  let removedStocks = 0
+  for (const stockId of doc.createdStockIds || []) {
+    const stock = await kvGetJSON(kv, `stock:${stockId}`)
+    await kv.del(`stock:${stockId}`)
+    if (stock?.partId) await idxRemove(kv, `index:stock:part:${stock.partId}`, stockId)
+    removedStocks++
+  }
+
+  let removedParts = 0
+  for (const partId of doc.createdPartIds || []) {
+    const r = await deletePart(kv, partId)
+    if (r.ok) removedParts++
+  }
+
+  await kvPutJSON(kv, `importbatch:${batchId}`, {
+    ...doc, undone: true, undoneAt: nowISO()
+  })
+  await appendAudit(kv, {
+    action: 'import.undo', source: 'import', batchId,
+    operator: doc.operator || 'import',
+    quantity: 0,
+    detail: `撤销导入：删除 ${removedParts} 个器件、${removedStocks} 个批次、${removedTransactions} 条流水`
+  })
+  return {
+    ok: true, batchId,
+    removed: { parts: removedParts, stocks: removedStocks, transactions: removedTransactions }
+  }
 }
 
 // 第三方器件信息代理占位（模块 3.3）：仅做结构占位，真实接口联调时补充。

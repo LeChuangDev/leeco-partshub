@@ -71,26 +71,51 @@
           <div class="sec-desc">
             樂創元件仓 Leeco PartsHub · 个人元器件库存管理系统<br />
             架构：Vue 3 + Vite + Naive UI + Pinia ／ EdgeOne Serverless（边缘函数 + 边缘 KV）<br />
-            当前版本范围：主数据 · 库存位置 · 订单导入 · 统计看板
+            当前版本范围：主数据 · 库存位置 · 订单导入 · 项目齐套 · 统计看板 · 操作日志
           </div>
           <div class="sec-actions">
-            <span class="chip gray">v0.2 MVP</span>
+            <span class="chip gray">v1.0</span>
             <span class="chip green">本地数据持久化</span>
           </div>
         </div>
       </section>
     </div>
+    <!-- 恢复确认：预演数字 + 输入 RESTORE 才能提交 -->
+    <n-modal v-model:show="showRestore" preset="card" title="确认覆盖恢复" style="width: 520px; max-width: 92vw" :mask-closable="false">
+      <div class="restore-note">
+        <b>此操作会用备份整体覆盖当前数据，且不可自动撤销。</b>
+      </div>
+      <div class="restore-grid">
+        <div><span>备份包含</span><b>{{ dryCounts.categories ?? 0 }} 分类 · {{ dryCounts.parts ?? 0 }} 器件 · {{ dryCounts.stocks ?? 0 }} 批次</b></div>
+        <div><span>备份包含</span><b>{{ dryCounts.locations ?? 0 }} 库位 · {{ dryCounts.transactions ?? 0 }} 流水 · {{ dryCounts.projects ?? 0 }} 项目</b></div>
+        <div><span>当前数据</span><b>{{ currentCounts.categories ?? '—' }} 分类 · {{ currentCounts.parts ?? '—' }} 器件 · {{ currentCounts.transactions ?? '—' }} 流水</b></div>
+      </div>
+      <div v-if="dryWarnings.length" class="restore-warn">
+        校验提示 {{ dryWarnings.length }} 条：{{ dryWarnings.slice(0, 3).join('；') }}
+      </div>
+      <p class="dim" style="font-size: 12px; margin: 12px 0 8px">
+        已自动保存恢复前快照（本次会话内可回滚）。请输入 <code class="code">RESTORE</code> 确认覆盖：
+      </p>
+      <n-input v-model:value="confirmText" placeholder="输入 RESTORE" :disabled="restoring" @keyup.enter="confirmText === 'RESTORE' && doRestore()" />
+      <template #footer>
+        <div class="row gap-8" style="justify-content: flex-end">
+          <n-button :disabled="restoring" @click="showRestore = false">取消</n-button>
+          <n-button type="error" :disabled="confirmText !== 'RESTORE' || restoring" :loading="restoring" @click="doRestore">确认覆盖</n-button>
+        </div>
+      </template>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NUpload, NInput, useDialog, useMessage } from 'naive-ui'
+import { NButton, NUpload, NInput, NModal, useDialog, useMessage } from 'naive-ui'
 import { api, getToken } from '@/shared/api'
 import { useAuth } from '@/modules/auth/stores/auth'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import PageHeader from '@/shared/ui/PageHeader.vue'
+import { emitDataChanged } from '@/shared/utils/events'
 
 const message = useMessage()
 const dialog = useDialog()
@@ -99,6 +124,12 @@ const auth = useAuth()
 const loading = ref(false)
 const restoring = ref(false)
 const rollbackSnapshot = ref<any>(null)
+const showRestore = ref(false)
+const confirmText = ref('')
+const pendingRestore = ref<any>(null)
+const dryCounts = ref<Record<string, number>>({})
+const dryWarnings = ref<string[]>([])
+const currentCounts = ref<Record<string, number>>({})
 
 const masked = computed(() => { const t = getToken(); return t ? t.slice(0, 4) + '••••••••' + t.slice(-2) : '未设置' })
 
@@ -116,71 +147,64 @@ async function restore(o: any) {
   const file = o?.file?.file as File
   if (!file) return
   if (file.size > 20 * 1024 * 1024) { message.error('备份文件超过 20MB，已拒绝'); return }
-  restoring.value = true
+  loading.value = true
   try {
     const text = await file.text()
     let data: any
     try { data = JSON.parse(text) } catch { message.error('文件不是合法 JSON'); return }
 
-    // 先服务端预演：只校验结构与引用，不写库
+    // 服务端预演：只校验结构与引用，不写库
     const dry: any = await api.restoreDryRun(data)
-    const c = dry.counts || {}
-    const warnings: string[] = dry.warnings || []
-    // 恢复前快照：既用于对比展示，也作为本次会话的回滚点
-    let current: any = {}
+    dryCounts.value = dry.counts || {}
+    dryWarnings.value = dry.warnings || []
+    currentCounts.value = {}
     rollbackSnapshot.value = null
     try {
       const snapshot: any = await api.exportAll()
       rollbackSnapshot.value = snapshot
-      current = {
-        categoriesCount: (snapshot.categories || []).length,
-        partsCount: (snapshot.parts || []).length,
-        transactionsCount: (snapshot.transactions || []).length
+      currentCounts.value = {
+        categories: (snapshot.categories || []).length,
+        parts: (snapshot.parts || []).length,
+        transactions: (snapshot.transactions || []).length
       }
-    } catch { current = {} }
+    } catch { /* 快照失败不阻断恢复，仅失去会话内回滚能力 */ }
 
-    dialog.warning({
-      title: '确认覆盖恢复？',
-      content: () => h('div', { style: 'font-size:13px;line-height:1.85' }, [
-        h('p', { style: 'margin:0 0 8px;color:#d03050;font-weight:600' }, '恢复会用备份内容整体覆盖当前数据，且不可撤销。'),
-        h('div', `备份包含：${c.categories ?? 0} 分类 · ${c.parts ?? 0} 器件 · ${c.stocks ?? 0} 库存批次 · ${c.locations ?? 0} 库位 · ${c.transactions ?? 0} 流水 · ${c.projects ?? 0} 项目`),
-        h('div', `当前数据：${current.categoriesCount ?? '—'} 分类 · ${current.partsCount ?? '—'} 器件 · ${current.transactionsCount ?? '—'} 流水`),
-        warnings.length
-          ? h('div', { style: 'margin-top:8px;color:#d97706' }, `校验提示 ${warnings.length} 条：${warnings.slice(0, 3).join('；')}`)
-          : null,
-        h('p', { style: 'margin:10px 0 0;color:#666' }, '建议先「导出全量 JSON」保留一份当前快照。')
-      ]),
-      positiveText: '确认覆盖',
-      negativeText: '取消',
-      onPositiveClick: async () => {
-        try {
-          const r: any = await api.restore(data)
-          message.success(`恢复完成：${JSON.stringify(r.counts)}`)
-          window.dispatchEvent(new CustomEvent('leeco:data-changed'))
-          if (rollbackSnapshot.value) {
-            dialog.info({
-              title: '需要回滚吗？',
-              content: '已保留恢复前的数据快照（仅本次会话有效）。若结果不符合预期，可立即回滚。',
-              positiveText: '保留恢复结果',
-              negativeText: '回滚到恢复前',
-              onNegativeClick: async () => {
-                try {
-                  await api.restore(rollbackSnapshot.value)
-                  message.success('已回滚到恢复前状态')
-                  window.dispatchEvent(new CustomEvent('leeco:data-changed'))
-                } catch (e: any) {
-                  message.error('回滚失败：' + (e?.message || e))
-                  return false
-                }
-              }
-            })
+    pendingRestore.value = data
+    confirmText.value = ''
+    showRestore.value = true
+  } catch (e: any) {
+    message.error('校验失败：' + (e?.message || e))
+  } finally {
+    loading.value = false
+  }
+}
+
+async function doRestore() {
+  if (confirmText.value !== 'RESTORE' || !pendingRestore.value) return
+  restoring.value = true
+  try {
+    const r: any = await api.restore(pendingRestore.value)
+    message.success(`恢复完成：${JSON.stringify(r.counts)}`)
+    emitDataChanged()
+    showRestore.value = false
+    if (rollbackSnapshot.value) {
+      dialog.info({
+        title: '需要回滚吗？',
+        content: '已保留恢复前的数据快照（仅本次会话有效）。若结果不符合预期，可立即回滚。',
+        positiveText: '保留恢复结果',
+        negativeText: '回滚到恢复前',
+        onNegativeClick: async () => {
+          try {
+            await api.restore(rollbackSnapshot.value)
+            message.success('已回滚到恢复前状态')
+            emitDataChanged()
+          } catch (e: any) {
+            message.error('回滚失败：' + (e?.message || e))
+            return false
           }
-        } catch (e: any) {
-          message.error('恢复失败：' + (e?.message || e))
-          return false
         }
-      }
-    })
+      })
+    }
   } catch (e: any) {
     message.error('恢复失败：' + (e?.message || e))
   } finally {
@@ -247,6 +271,13 @@ function logout() { auth.logout(); router.push({ name: 'login' }) }
 </script>
 
 <style scoped>
+.restore-note { color: var(--error, #d03050); font-size: 13px; margin-bottom: 12px; }
+.restore-grid { display: grid; gap: 8px; font-size: 12.5px; }
+.restore-grid div { display: flex; justify-content: space-between; gap: 12px; }
+.restore-grid span { color: var(--text-3); flex-shrink: 0; }
+.restore-grid b { font-weight: 600; color: var(--text-1); text-align: right; }
+.restore-warn { margin-top: 12px; font-size: 12px; color: var(--warning); line-height: 1.6; }
+
 .settings { max-width: 820px; margin: 0 auto; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .section { display: flex; gap: 16px; padding: 20px; }

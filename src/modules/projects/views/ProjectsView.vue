@@ -331,9 +331,7 @@ const summary = computed(() => analysis.value?.summary || {
   lineCount: 0, partKinds: 0, requiredQty: 0, readyQty: 0, shortageQty: 0,
   completeness: 0, shortLines: 0, emptyLines: 0, unlinkedLines: 0, multiple: 1, buildQty: 1
 } as any)
-const shortageLines = computed(() =>
-  summary.value.shortLines + summary.value.emptyLines + summary.value.unlinkedLines
-)
+const shortageLines = computed(() => summary.value.shortageLinesIncludingUnlinked || 0)
 const filteredLines = computed(() => {
   const q = lineKw.value.trim().toLowerCase()
   if (!q) return lines.value

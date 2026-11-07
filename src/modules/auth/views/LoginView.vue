@@ -1,7 +1,7 @@
 <template>
   <div class="wrap">
     <div class="card login-card">
-      <div class="logo"><AppIcon name="package" :size="34" /></div>
+      <div class="login-mark"><BrandMark :size="60" /></div>
       <h1 class="title">樂創元件仓</h1>
       <p class="sub">Leeco PartsHub · 个人元器件库存管理系统</p>
 
@@ -34,6 +34,7 @@ import { NInput, NButton, useMessage } from 'naive-ui'
 import { api, getToken } from '@/shared/api'
 import { useAuth } from '@/modules/auth/stores/auth'
 import AppIcon from '@/shared/ui/AppIcon.vue'
+import BrandMark from '@/shared/ui/BrandMark.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -98,12 +99,7 @@ async function submit() {
   width: 380px; max-width: 92vw; padding: 40px 32px; text-align: center;
   border: 1px solid var(--outline); border-radius: 20px; box-shadow: var(--shadow-2);
 }
-.logo {
-  width: 60px; height: 60px; margin: 0 auto 16px; border-radius: 17px; color: #fff;
-  background: linear-gradient(140deg, #6b7bff, #8f7bff 70%, #a78bfa);
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: var(--shadow-primary);
-}
+.login-mark { display: flex; justify-content: center; margin-bottom: 18px; }
 .title { font-size: 24px; font-weight: 800; margin: 0; letter-spacing: -.02em; }
 .sub { color: var(--text-2); font-size: 13px; margin: 6px 0 24px; }
 .hint { color: var(--text-3); font-size: 12px; margin: 14px 0 18px; line-height: 1.6; }

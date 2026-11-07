@@ -235,6 +235,7 @@ import {
   NDrawer, NDrawerContent, useMessage, useDialog
 } from 'naive-ui'
 import { api } from '@/shared/api'
+import { buildParamTemplate } from '@server/domain/param-template.js'
 import { onDataChanged } from '@/shared/utils/events'
 import type { Category, Location, Part } from '@/shared/api/types'
 import AppIcon from '@/shared/ui/AppIcon.vue'
@@ -323,34 +324,6 @@ const catLoading = ref(false)
 const catForm = ref<{ id: string | null; name: string; parentId: string | null; paramTemplate: any[] }>({ id: null, name: '', parentId: null, paramTemplate: [] })
 const typeOpts = [{ label: '文本', value: 'text' }, { label: '数字', value: 'number' }, { label: '枚举', value: 'enum' }]
 
-/**
- * 生成参数模板 key：保留中文与字母数字，其余折叠为连字符。
- * 中文标签（如「阻值」）不再被清空为空串；空值与重复值都会兜底，避免 key 冲突。
- * 编辑已有分类时优先沿用原 key，保证已录入的 params 不因改名而失联。
- */
-function buildParamTemplate(list: any[]) {
-  const used = new Set<string>()
-  return list
-    .filter((p) => p && String(p.label || '').trim())
-    .map((p) => {
-      const label = String(p.label).trim()
-      const base = label
-        .toLowerCase()
-        .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
-        .replace(/^-+|-+$/g, '') || 'param'
-      let key = String(p.key || '').trim()
-      if (!key || used.has(key)) {
-        key = base
-        let n = 2
-        while (used.has(key)) key = `${base}_${n++}`
-      }
-      used.add(key)
-      const out: any = { key, label, type: p.type || 'text' }
-      if (p.unit) out.unit = String(p.unit).trim()
-      if (Array.isArray(p.options) && p.options.length) out.options = p.options.filter(Boolean)
-      return out
-    })
-}
 
 const hasFilter = computed(() => !!(search.value || expr.value || tag.value || selectedCat.value || quickFilter.value !== 'all'))
 const selectedCatName = computed(() => categories.value.find((c) => c.id === selectedCat.value)?.name || '')
@@ -552,7 +525,12 @@ async function loadAll() {
     allParts.value = r.list || []
   } catch { allParts.value = [] }
 }
-function onFilter() { loadParts() }
+let filterTimer: ReturnType<typeof setTimeout> | null = null
+function onFilter() {
+  // 输入过程中合并请求，避免每个字符都打一次后端
+  if (filterTimer) clearTimeout(filterTimer)
+  filterTimer = setTimeout(() => loadParts(), 220)
+}
 function resetFilters() {
   search.value = ''; expr.value = ''; tag.value = null; selectedCat.value = null
   quickFilter.value = 'all'; checkedKeys.value = []
@@ -654,6 +632,7 @@ watch(() => route.fullPath, () => {
 })
 
 onBeforeUnmount(() => {
+  if (filterTimer) clearTimeout(filterTimer)
   window.removeEventListener('resize', syncViewport)
   if (offData) offData()
   clearTimeout(refreshTimer)

@@ -18,6 +18,7 @@ import { handleBom } from './routes/bom.routes.js'
 import { handleSearch } from './routes/search.routes.js'
 import { handleExport } from './routes/backup.routes.js'
 import { handleMeta, handleStats } from './routes/analytics.routes.js'
+import { handleAudit } from './routes/audit.routes.js'
 
 /** 资源前缀 → 处理器。新增模块只需在此登记。 */
 const ROUTES = {
@@ -32,6 +33,7 @@ const ROUTES = {
   search: handleSearch,
   export: handleExport,
   stats: handleStats,
+  audit: handleAudit,
   meta: handleMeta
 }
 

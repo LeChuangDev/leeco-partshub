@@ -6,7 +6,12 @@ import { seedIfEmpty } from '../../server/infrastructure/seed.js'
 import { DEFAULT_CATEGORIES } from '../../server/domain/models.js'
 import { listParts } from '../../server/application/catalog.service.js'
 import { stockIn, stockOut } from '../../server/application/stock.service.js'
-import { exportAll, importAll } from '../../server/application/backup.service.js'
+import { countBackup, exportAll, importAll, validateBackup } from '../../server/application/backup.service.js'
+import { listImportBatches, undoImport } from '../../server/application/import.service.js'
+import { listAudits } from '../../server/repositories/audit.repository.js'
+import { moveStock as moveStockWithAudit } from '../../server/application/inventory.service.js'
+import { summarizeBom, METRIC_LABELS } from '../../server/domain/bom/summary.js'
+import { buildParamTemplate } from '../../server/domain/param-template.js'
 import { getStats } from '../../server/application/analytics.service.js'
 import { listCategories } from '../../server/repositories/category.repository.js'
 import { createPart, deletePart, getPart } from '../../server/repositories/part.repository.js'
@@ -379,6 +384,115 @@ async function main() {
   ok('元器件不存在被拒绝', mvNoPart.ok === false)
   const qtyAfterMove = await partTotalQuantity(kv, pMove.id)
   ok('移动不改变库存数量', qtyAfterMove === 50, `实际 ${qtyAfterMove}`)
+
+  console.log('\n[12] 统计口径共享函数')
+  const emptySummary = summarizeBom([])
+  ok('空 BOM 全部归零', emptySummary.lineCount === 0 && emptySummary.completeness === 0 && emptySummary.coverage === 0)
+  const okSummary = summarizeBom([
+    { partId: 'p1', status: 'ok', required: 10, available: 20, shortage: 0 }
+  ])
+  ok('全齐套：齐套率 100% / 匹配率 100% / 缺料 0',
+    okSummary.completeness === 100 && okSummary.coverage === 100 && okSummary.shortageLines === 0)
+  const shortSummary = summarizeBom([
+    { partId: 'p1', status: 'short', required: 10, available: 4, shortage: 6 },
+    { partId: null, status: 'missing', required: 10, available: 0, shortage: 10 }
+  ])
+  ok('部分缺料按件数给 credit', shortSummary.completeness === 20, `实际 ${shortSummary.completeness}`)
+  ok('缺料行不含未建档', shortSummary.shortageLines === 1, `实际 ${shortSummary.shortageLines}`)
+  ok('缺料行含未建档 = 2', shortSummary.shortageLinesIncludingUnlinked === 2, `实际 ${shortSummary.shortageLinesIncludingUnlinked}`)
+  ok('未建档行与匹配率按行计算', shortSummary.missingLines === 1 && shortSummary.coverage === 50)
+  ok('展示标签集中定义', METRIC_LABELS.completeness.includes('件') && METRIC_LABELS.coverage.includes('行'))
+
+  console.log('\n[13] 分类参数模板 key')
+  const tpl = buildParamTemplate([
+    { label: '阻值', type: 'text' },
+    { label: '额定功率', type: 'number', unit: 'W' },
+    { label: '精度', type: 'enum', options: ['±1%', ''] }
+  ])
+  ok('纯中文标签生成非空 key', tpl.length === 3 && tpl.every((f) => f.key && f.key.length > 0))
+  ok('中文 key 互不相同', new Set(tpl.map((f) => f.key)).size === 3, tpl.map((f) => f.key).join(','))
+  ok('中文 key 保留原字符', tpl[0].key === '阻值', tpl[0].key)
+  ok('单位与枚举选项保留', tpl[1].unit === 'W' && tpl[2].options.length === 1)
+  const mixed = buildParamTemplate([{ label: 'ESR @100kHz' }, { label: 'ESR @100kHz' }, { label: '###' }, { label: '   ' }])
+  ok('中英混排归一为连字符', mixed[0].key === 'esr-100khz', mixed[0].key)
+  ok('重名自动编号', mixed[1].key === 'esr-100khz_2', mixed[1].key)
+  ok('纯符号与空标签兜底', mixed[2].key === 'param' && mixed.length === 3, JSON.stringify(mixed))
+  const kept = buildParamTemplate([{ key: 'legacy_key', label: '改过名的字段' }])
+  ok('已有 key 优先沿用', kept[0].key === 'legacy_key')
+
+  console.log('\n[14] 备份结构校验')
+  const badA = validateBackup({})
+  ok('缺 parts 被拦截', badA.errors.some((e) => e.includes('parts')))
+  const badB = validateBackup({ parts: 'x' })
+  ok('parts 非数组被拦截', badB.errors.some((e) => e.includes('数组')))
+  const badC = validateBackup({ parts: [{ id: 'p1' }, { id: 'p1' }] })
+  ok('重复 id 被拦截', badC.errors.some((e) => e.includes('重复')))
+  const warnCase = validateBackup({ parts: [{ id: 'p1' }], stocks: [{ id: 's1', partId: 'ghost' }] })
+  ok('合法结构放行，孤儿引用给警告', warnCase.errors.length === 0 && warnCase.warnings.length > 0)
+  const counted = countBackup({ parts: [1, 2], stocks: [1], locations: [1, 2, 3] })
+  ok('预演计数准确', counted.parts === 2 && counted.stocks === 1 && counted.locations === 3)
+
+  console.log('\n[15] 扫码合并与审计日志')
+  const kvAudit = new MemoryKV()
+  await seedIfEmpty(kvAudit)
+  const pScan = await createPart(kvAudit, { name: '扫码合并电阻', package: '0603' })
+  const locScan = await createLocation(kvAudit, { name: '扫码柜', code: 'S-1' })
+  await stockIn(kvAudit, pScan.id, { quantity: 1, locationId: locScan.id, unitPrice: 0.02, source: 'scan' })
+  const in2 = await stockIn(kvAudit, pScan.id, { quantity: 2, locationId: locScan.id, unitPrice: 0.02, source: 'scan', merge: true })
+  ok('第二次扫码合并到同一批次', in2.merged === true, JSON.stringify(in2))
+  ok('合并后只有一个批次', (await listStock(kvAudit, pScan.id)).length === 1)
+  ok('合并后数量累加为 3', await partTotalQuantity(kvAudit, pScan.id) === 3)
+  const txnScan = (await listTransactions(kvAudit, pScan.id)).find((t) => t.quantity === 2)
+  ok('流水带来源与变动前后数量',
+    txnScan?.source === 'scan' && txnScan?.beforeQty === 1 && txnScan?.afterQty === 3, JSON.stringify(txnScan))
+  await stockOut(kvAudit, pScan.id, { quantity: 1, source: 'scan' })
+  const locScan2 = await createLocation(kvAudit, { name: '扫码柜 B', code: 'S-2' })
+  await moveStockWithAudit(kvAudit, { partId: pScan.id, locationId: locScan2.id, source: 'scan' })
+  const audits = await listAudits(kvAudit)
+  const actions = new Set(audits.map((a) => a.action))
+  ok('审计日志覆盖入库 / 出库 / 移库',
+    actions.has('stock.in') && actions.has('stock.out') && actions.has('stock.move'), [...actions].join(','))
+  ok('审计事件记录来源与器件', audits.every((a) => a.source === 'scan' && a.partId === pScan.id))
+
+  console.log('\n[16] 导入批次撤销')
+  const kvUndo = new MemoryKV()
+  await seedIfEmpty(kvUndo)
+  const before = (await listParts(kvUndo)).total
+  const committed = await commitImport(kvUndo, [
+    { index: 0, action: 'create', partData: { name: '撤销测试电容', package: '0603' }, row: { quantity: 7, unitPrice: 0.1 } }
+  ])
+  ok('提交返回 batchId', Boolean(committed.batchId), JSON.stringify(committed))
+  ok('导入后器件数 +1', (await listParts(kvUndo)).total === before + 1)
+  const batches = await listImportBatches(kvUndo)
+  ok('批次列表可撤销', batches.some((b) => b.id === committed.batchId && b.undoable))
+  const undone = await undoImport(kvUndo, committed.batchId)
+  ok('撤销成功并删除新建对象', undone.ok && undone.removed.parts === 1 && undone.removed.stocks === 1, JSON.stringify(undone))
+  ok('撤销后器件数恢复', (await listParts(kvUndo)).total === before)
+  ok('重复撤销被拒绝', (await undoImport(kvUndo, committed.batchId)).ok === false)
+  ok('撤销动作写入审计', (await listAudits(kvUndo)).some((a) => a.action === 'import.undo'))
+
+  console.log('\n[17] 恢复失败整体回滚')
+  const kvRollback = new MemoryKV()
+  await seedIfEmpty(kvRollback)
+  const pKeep = await createPart(kvRollback, { name: '恢复前应保留的器件', package: '0805' })
+  const backup = await exportAll(kvRollback)
+  await stockIn(kvRollback, pKeep.id, { quantity: 12 })
+  class FailingKV extends MemoryKV {
+    constructor(base) { super(); this.map = new Map(base.map); this.failKey = null; this.failOnce = true }
+    async put(key, value) {
+      // 只在第一次写入目标键时失败，之后允许回滚写入
+      if (key === this.failKey && this.failOnce) { this.failOnce = false; throw new Error('模拟写入失败') }
+      return super.put(key, value)
+    }
+  }
+  const failing = new FailingKV(kvRollback)
+  failing.failKey = `part:${backup.parts[0].id}`
+  let rollbackErr = null
+  try { await importAll(failing, backup) } catch (e) { rollbackErr = e }
+  ok('写入失败会抛错', Boolean(rollbackErr))
+  ok('失败后库存回滚到 12', await partTotalQuantity(failing, pKeep.id) === 12)
+  ok('失败后器件记录仍在', Boolean(await getPart(failing, pKeep.id)))
+  ok('回滚写入未被失败键阻断', failing.failOnce === false)
 
   console.log(`\n========== 结果: ${passed} 通过, ${failed} 失败 ==========`)
   process.exit(failed === 0 ? 0 : 1)

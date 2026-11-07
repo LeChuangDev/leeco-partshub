@@ -90,7 +90,7 @@
         </div>
         <div class="card kpi">
           <div class="kpi-label">缺料行（不含未建档）</div>
-          <div class="kpi-value accent">{{ (summary?.shortLines || 0) + (summary?.emptyLines || 0) }}<span class="kpi-unit">行</span></div>
+          <div class="kpi-value accent">{{ summary?.shortageLines || 0 }}<span class="kpi-unit">行</span></div>
           <div class="kpi-sub">缺口 {{ summary?.shortageQty }} 件</div>
         </div>
         <div class="card kpi">
@@ -263,6 +263,7 @@ import {
 import { api } from '@/shared/api'
 import type { BomLine, BomSummary, Category, Part } from '@/shared/api/types'
 import { parseBomText } from '@server/domain/bom/parser.js'
+import { summarizeBom } from '@server/domain/bom/summary.js'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import PageHeader from '@/shared/ui/PageHeader.vue'
 
@@ -545,24 +546,8 @@ function clearMatch() {
   showPick.value = false
 }
 function recomputeSummary() {
-  const list = lines.value
-  const matched = list.filter((l) => l.partId)
-  const requiredQty = list.reduce((s, l) => s + l.required, 0)
-  const readyQty = list.reduce((s, l) => s + Math.min(l.required, l.available), 0)
-  summary.value = {
-    lineCount: list.length,
-    partKinds: new Set(matched.map((l) => l.partId)).size,
-    matchedLines: matched.length,
-    missingLines: list.length - matched.length,
-    okLines: list.filter((l) => l.status === 'ok').length,
-    shortLines: list.filter((l) => l.status === 'short').length,
-    emptyLines: list.filter((l) => l.status === 'empty').length,
-    requiredQty,
-    shortageQty: list.reduce((s, l) => s + l.shortage, 0),
-    readyQty,
-    coverage: list.length ? Math.round((matched.length / list.length) * 100) : 0,
-    completeness: requiredQty ? Math.round((readyQty / requiredQty) * 100) : 0
-  }
+  // 与后端 / 项目页共用同一口径实现，避免前端重算漂移
+  summary.value = summarizeBom(lines.value) as BomSummary
 }
 
 /* ---------------- 建档 ---------------- */

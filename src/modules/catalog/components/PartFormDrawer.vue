@@ -142,6 +142,12 @@ async function save() {
 function onUpload(o: any) {
   const file = o?.file?.file as File
   if (!file) return
+  // 附件以 Base64 存在 KV 中，单文件 2MB / 单器件 6MB 上限，避免撑爆单条记录
+  const MAX_FILE = 2 * 1024 * 1024
+  const MAX_TOTAL = 6 * 1024 * 1024
+  if (file.size > MAX_FILE) { message.warning(`「${file.name}」超过 2MB，请改用外链或压缩后再上传`); return }
+  const used = f.value.attachments.reduce((sum: number, a: any) => sum + (Number(a.size) || 0), 0)
+  if (used + file.size > MAX_TOTAL) { message.warning('单个器件附件总量超过 6MB，请先移除部分附件'); return }
   const reader = new FileReader()
   reader.onload = () => {
     f.value.attachments.push({

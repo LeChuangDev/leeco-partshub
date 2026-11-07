@@ -10,9 +10,11 @@ import { listStock } from '../repositories/stock.repository.js'
 import { stockOut } from './stock.service.js'
 import { listParts } from './catalog.service.js'
 import { parseBomText, normalizeBomRow } from '../domain/bom/parser.js'
+import { summarizeBom } from '../domain/bom/summary.js'
 import { cleanName, normalizePackage, expandSearchTokens, matchesTokens } from '../domain/normalize.js'
 
 export { parseBomText, normalizeBomRow } from '../domain/bom/parser.js'
+export { summarizeBom, METRIC_LABELS } from '../domain/bom/summary.js'
 
 /* ------------------------------- 匹配打分 ------------------------------- */
 const SCORE = {
@@ -187,29 +189,6 @@ export async function matchBom(kv, rawRows = []) {
   })
 
   return { lines, summary: summarizeBom(lines) }
-}
-
-export function summarizeBom(lines = []) {
-  const matched = lines.filter((l) => l.partId)
-  const kindSet = new Set(matched.map((l) => l.partId))
-  const sum = (arr, key) => arr.reduce((s, x) => s + (Number(x[key]) || 0), 0)
-  const requiredQty = sum(lines, 'required')
-  const shortageQty = sum(lines, 'shortage')
-  const readyQty = lines.reduce((s, l) => s + Math.min(Number(l.required) || 0, Number(l.available) || 0), 0)
-  return {
-    lineCount: lines.length,
-    partKinds: kindSet.size,
-    matchedLines: matched.length,
-    missingLines: lines.length - matched.length,
-    okLines: lines.filter((l) => l.status === 'ok').length,
-    shortLines: lines.filter((l) => l.status === 'short').length,
-    emptyLines: lines.filter((l) => l.status === 'empty').length,
-    requiredQty,
-    shortageQty,
-    readyQty,
-    coverage: lines.length ? Math.round((matched.length / lines.length) * 100) : 0,
-    completeness: requiredQty ? Math.round((readyQty / requiredQty) * 100) : 0
-  }
 }
 
 /**

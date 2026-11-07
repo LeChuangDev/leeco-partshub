@@ -3,7 +3,7 @@
     <!-- 桌面侧栏 -->
     <aside v-if="!isMobile" class="sider" :class="{ collapsed }">
       <div class="brand" :class="{ center: collapsed }">
-        <div class="logo"><AppIcon name="package" :size="21" /></div>
+        <BrandMark :size="36" />
         <div v-if="!collapsed" class="brand-text">
           <div class="b1">樂創元件仓</div>
           <div class="b2">LEECO PARTSHUB</div>
@@ -35,7 +35,7 @@
       <n-drawer-content :native-scrollbar="false" body-content-style="padding: 0">
         <div class="drawer-body">
           <div class="brand">
-            <div class="logo"><AppIcon name="package" :size="21" /></div>
+            <BrandMark :size="36" />
             <div class="brand-text">
               <div class="b1">樂創元件仓</div>
               <div class="b2">LEECO PARTSHUB</div>
@@ -61,7 +61,7 @@
           <button class="search-trigger" title="全局搜索（Ctrl / ⌘ + K）" aria-label="全局搜索" @click="ui.openPalette()">
             <AppIcon name="search" :size="15" />
             <span class="st-text">搜索器件、库位…</span>
-            <kbd class="st-kbd">⌘K</kbd>
+            <kbd class="st-kbd">{{ modKey }}</kbd>
           </button>
         </div>
 
@@ -106,6 +106,7 @@ import { useAuth } from '@/modules/auth/stores/auth'
 import { useTheme } from '@/shared/stores/theme'
 import { useUi } from '@/shared/stores/ui'
 import AppIcon from '@/shared/ui/AppIcon.vue'
+import BrandMark from '@/shared/ui/BrandMark.vue'
 import QuickAddModal from '@/modules/inventory/components/QuickAddModal.vue'
 import CommandPalette from '@/app/components/CommandPalette.vue'
 import ScanModal from '@/modules/inventory/components/ScanModal.vue'
@@ -117,6 +118,7 @@ const auth = useAuth()
 const theme = useTheme()
 const ui = useUi()
 
+const modKey = /Mac|iPhone|iPad/i.test(navigator.platform) ? '⌘K' : 'Ctrl K'
 const collapsed = ref(false)
 const isMobile = ref(false)
 const drawer = ref(false)
@@ -128,6 +130,7 @@ const menuOptions = [
   { label: 'BOM 齐套', key: 'bom', icon: () => h(AppIcon, { name: 'bom', size: 18 }) },
   { label: '存储位置', key: 'locations', icon: () => h(AppIcon, { name: 'location', size: 18 }) },
   { label: '订单导入', key: 'import', icon: () => h(AppIcon, { name: 'import', size: 18 }) },
+  { label: '操作日志', key: 'audit', icon: () => h(AppIcon, { name: 'clock', size: 18 }) },
   { label: '备份与设置', key: 'backup', icon: () => h(AppIcon, { name: 'settings', size: 18 }) }
 ]
 
@@ -158,7 +161,7 @@ function syncViewport() {
 /* ---------------- 全局快捷键 ---------------- */
 const NAV_KEYS: Record<string, string> = {
   '1': 'dashboard', '2': 'parts', '3': 'projects', '4': 'bom',
-  '5': 'locations', '6': 'import', '7': 'backup', '8': 'labels'
+  '5': 'locations', '6': 'import', '7': 'backup', '8': 'labels', '9': 'audit'
 }
 
 function isTyping(el: EventTarget | null) {
@@ -234,17 +237,14 @@ function onUser(key: string) {
   overflow: hidden;
 }
 .sider.collapsed { width: 68px; flex-basis: 68px; }
-.brand { display: flex; align-items: center; gap: 11px; padding: 18px 18px 14px; min-height: 66px; }
+.brand { display: flex; align-items: center; gap: 12px; padding: 17px 18px 15px; min-height: 66px; }
 .brand.center { justify-content: center; padding: 18px 0 14px; }
-.logo {
-  width: 36px; height: 36px; border-radius: 11px; color: #fff; flex-shrink: 0;
-  background: linear-gradient(140deg, #6b7bff, #8f7bff 70%, #a78bfa);
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(91, 108, 255, .32);
-}
 .brand-text { min-width: 0; }
-.brand-text .b1 { font-weight: 750; font-size: 15.5px; letter-spacing: -.01em; line-height: 1.2; }
-.brand-text .b2 { font-size: 9.5px; color: var(--text-3); letter-spacing: .14em; margin-top: 2px; }
+.brand-text .b1 { font-weight: 700; font-size: 15.5px; letter-spacing: .005em; line-height: 1.25; color: var(--text-1); }
+.brand-text .b2 {
+  font-size: 9px; color: var(--text-3); letter-spacing: .19em;
+  margin-top: 3px; font-weight: 600; white-space: nowrap;
+}
 .menu-label {
   font-size: 10.5px; font-weight: 700; letter-spacing: .12em; color: var(--text-3);
   padding: 6px 20px 4px; text-transform: uppercase;

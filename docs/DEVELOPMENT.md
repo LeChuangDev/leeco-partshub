@@ -58,6 +58,7 @@ node tests/e2e/ui-realtime.mjs                    # 扫码后看板自动刷新
 node tests/e2e/ui-dashboard-layout.mjs            # 看板拖拽排序
 node tests/e2e/ui-project-context-menu.mjs        # 项目行右键菜单
 node tests/e2e/ui-qr-decode.mjs                   # 标签二维码解码
+node tests/e2e/ui-report-improvements.mjs          # 品牌标记、操作日志明暗/移动、恢复确认
 ```
 
 截图输出到 `tests/.artifacts/`（已忽略提交）。
@@ -85,5 +86,13 @@ node tests/e2e/ui-qr-decode.mjs                   # 标签二维码解码
 | --- | --- | --- |
 | `AUTH_TOKEN` | 接口令牌，前端登录时输入相同值 | 必填 |
 | `AUTH_DISABLED` | `1` 时跳过鉴权 | **禁止**设置 |
+
+## 新增能力速查
+
+- **操作日志**：侧栏「操作日志」或 `Alt+9`，`/api/audit` 支持按动作 / 来源 / 器件 / 关键词过滤。
+- **导入撤销**：提交后 10 分钟内结果栏显示倒计时与撤销按钮，服务端按 `batchId` 只删除本次新建对象。
+- **恢复防护**：上传备份 → 服务端预演 → 输入 `RESTORE` → 覆盖写入；写入失败整体回滚，会话内可手动回滚。
+- **扫码合并**：同器件 + 同库位 + 同单价的连续扫码并入同一批次，不再产生大量 `quantity=1` 碎片。
+
 | `KV_FILE` | 本地 FileKV 路径 | 仅本地 |
 | `KV` | EdgeOne 边缘 KV 绑定 | 由控制台注入 |

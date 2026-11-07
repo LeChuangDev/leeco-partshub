@@ -97,6 +97,7 @@ const PAGES: Item[] = [
   { type: 'page', id: 'locations', label: '存储位置', sub: '位置树与二维码', icon: 'location', to: { name: 'locations' } },
   { type: 'page', id: 'import', label: '订单导入', sub: '立创 / 贸泽 / 得捷', icon: 'import', to: { name: 'import' } },
   { type: 'page', id: 'labels', label: '打印标签', sub: '二维码标签与批量打印', icon: 'printer', to: { name: 'labels' } },
+  { type: 'page', id: 'audit', label: '操作日志', sub: '出入库、移库、导入与恢复留痕', icon: 'clock', to: { name: 'audit' } },
   { type: 'page', id: 'backup', label: '备份与设置', sub: '导出、恢复', icon: 'settings', to: { name: 'backup' } }
 ]
 

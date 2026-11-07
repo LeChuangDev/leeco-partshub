@@ -55,7 +55,6 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NSelect, useMessage } from 'naive-ui'
-import QRCode from 'qrcode'
 import { api } from '@/shared/api'
 import { buildPartQrText, isPublicOrigin } from '@server/domain/qr.js'
 import type { Category, Location, Part } from '@/shared/api/types'
@@ -83,11 +82,15 @@ const qrModeOptions = [
 
 const items = computed(() => parts.value)
 
+const categoryById = computed(() => new Map(categories.value.map((c) => [c.id, c])))
+const locationById = computed(() => new Map(locations.value.map((l) => [l.id, l])))
+const partById = computed(() => new Map(parts.value.map((p) => [p.id, p])))
+
 function catName(id: string | null) {
-  return categories.value.find((c) => c.id === id)?.name || ''
+  return (id && categoryById.value.get(id)?.name) || ''
 }
 function paramLabels(id: string | null): Record<string, string> {
-  const tpl = categories.value.find((c) => c.id === id)?.paramTemplate || []
+  const tpl = (id && categoryById.value.get(id)?.paramTemplate) || []
   const map: Record<string, string> = {}
   for (const f of tpl) map[f.key] = f.label
   return map
@@ -98,16 +101,15 @@ function paramLine(p: Part) {
   return pairs.map(([k, v]) => `${labels[k] || k} ${v}`).join(' · ')
 }
 function locPath(partId: string) {
-  const p = parts.value.find((x) => x.id === partId)
+  const p = partById.value.get(partId)
   const batch = (p?.stocks || []).find((b) => b.locationId && (b.quantity || 0) > 0)
   if (!batch?.locationId) return ''
-  const byId = new Map(locations.value.map((l) => [l.id, l]))
   const names: string[] = []
-  let cur = byId.get(batch.locationId)
+  let cur = locationById.value.get(batch.locationId)
   let guard = 0
   while (cur && guard++ < 10) {
     names.unshift(cur.name)
-    cur = cur.parentId ? byId.get(cur.parentId) : null
+    cur = cur.parentId ? locationById.value.get(cur.parentId) : null
   }
   return names.join(' / ')
 }
@@ -126,15 +128,19 @@ function qrText(p: Part, mode: 'compact' | 'full' = 'compact') {
 }
 
 async function buildQrMap() {
-  if (!parts.value.length) return
-  const map: Record<string, string> = {}
-  for (const p of parts.value) {
-    map[p.id] = await QRCode.toDataURL(qrText(p, qrMode.value), {
-      margin: 0, width: 300, errorCorrectionLevel: 'M',
-      color: { dark: '#000000', light: '#ffffff' }
-    })
+  if (!parts.value.length) { qrMap.value = {}; return }
+  // qrcode 按需加载，避免进入打印页之前就下载编码器
+  const mod: any = await import('qrcode')
+  const QRCode = mod.default || mod
+  const options = {
+    margin: 0, width: 300, errorCorrectionLevel: 'M' as const,
+    color: { dark: '#000000', light: '#ffffff' }
   }
-  qrMap.value = map
+  const entries = await Promise.all(parts.value.map(async (p) => {
+    const url = await QRCode.toDataURL(qrText(p, qrMode.value), options)
+    return [p.id, url] as const
+  }))
+  qrMap.value = Object.fromEntries(entries)
 }
 
 watch(qrMode, () => { buildQrMap() })
@@ -152,27 +158,26 @@ function doPrint() {
 onMounted(async () => {
   try {
     const ids = String(route.query.ids || '').split(',').map((s) => s.trim()).filter(Boolean)
-    const [all, cats, locs] = await Promise.all([
-      api.listParts({ pageSize: 2000 }),
-      api.listCategories(),
-      api.listLocations()
-    ])
+    const [cats, locs] = await Promise.all([api.listCategories(), api.listLocations()])
     categories.value = cats
     locations.value = locs
-    const allParts: Part[] = (all as any).list || []
-    const total = Number((all as any).total) || allParts.length
+
     if (ids.length) {
-      const found = ids.map((id) => allParts.find((p) => p.id === id)).filter(Boolean) as Part[]
-      const missing = ids.length - found.length
-      if (missing > 0) message.warning(`有 ${missing} 个所选器件未加载（库存超过 2000 条时可能发生），请分批打印`)
-      parts.value = found
+      // 按 ID 逐条取详情，不再依赖 pageSize:2000 的全量列表，避免大库静默丢件
+      const MAX = 120
+      const wanted = ids.slice(0, MAX)
+      if (ids.length > MAX) message.warning(`已选 ${ids.length} 项，单次最多打印 ${MAX} 张，本次打印前 ${MAX} 项`)
+      const found = await Promise.all(wanted.map((id) => api.getPart(id).catch(() => null)))
+      const list = found.filter(Boolean) as Part[]
+      const missing = wanted.length - list.length
+      if (missing > 0) message.warning(`有 ${missing} 个所选器件不存在或读取失败，已跳过`)
+      parts.value = list
     } else {
-      parts.value = allParts.slice(0, 40)
+      const all: any = await api.listParts({ pageSize: 40 })
+      const list: Part[] = all.list || []
+      const total = Number(all.total) || list.length
+      parts.value = list.slice(0, 40)
       if (total > 40) message.info(`未指定器件，默认打印前 40 项（共 ${total} 项）`)
-    }
-    if (parts.value.length > 120) {
-      parts.value = parts.value.slice(0, 120)
-      message.warning('单次最多打印 120 张，已截断')
     }
     await buildQrMap()
   } catch (e: any) {
