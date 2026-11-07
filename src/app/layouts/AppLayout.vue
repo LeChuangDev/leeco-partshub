@@ -243,7 +243,7 @@ function onUser(key: string) {
 .brand-text { min-width: 0; }
 .brand-text .b1 { font-weight: 650; font-size: 15px; letter-spacing: .02em; line-height: 1.3; color: var(--text-1); }
 .brand-text .b2 {
-  font-size: 8.5px; color: var(--text-3); letter-spacing: .22em;
+  font-size: 9px; color: var(--text-3); letter-spacing: .3em;
   margin-top: 4px; font-weight: 500; white-space: nowrap;
 }
 .menu-label {

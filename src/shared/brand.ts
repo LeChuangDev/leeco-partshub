@@ -7,8 +7,8 @@ export const BRAND = {
   name: '樂創元件库',
   /** 面包屑等窄空间使用的短名 */
   shortName: '樂創',
-  /** 英文副标，分写 + 大字距，保持克制 */
-  english: 'LEECO PARTS HUB',
+  /** 英文副标：只保留单一品牌词 + 大字距，避免重复中文主名里的品类词 */
+  english: 'LEECO',
   /** 产品标识，用于文档、部署说明与技术上下文 */
   product: 'Leeco PartsHub',
   /** 一句话定位 */

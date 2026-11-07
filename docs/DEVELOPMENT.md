@@ -45,7 +45,8 @@ npm run typecheck   # vue-tsc，0 错误
 npm run test:unit   # 领域与用例单测（MemoryKV，无需服务）
 npm run test:api    # 进程内 API 契约测试（无需服务）
 npm run build       # 生产构建
-npm run check       # 以上四项串行执行
+npm run check       # 路径自检 + 以上四项串行执行
+npm run check:paths # 单独验证代码不含本机绝对路径（项目目录改名后运行）
 ```
 
 UI 端到端验证需要先启动 `npm run dev:all`：

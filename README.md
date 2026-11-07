@@ -9,8 +9,9 @@
 
 ![总览看板](docs/assets/dashboard.png)
 
-品牌命名：中文主名「樂創元件库」、英文副标「LEECO PARTS HUB」、产品标识「Leeco PartsHub」。
-「库」对应工程师语境中的 library / inventory，比口语化的「仓」更克制；英文分写并拉开字距。
+品牌命名：中文主名「樂創元件库」、英文副标「LEECO」、产品标识「Leeco PartsHub」。
+「库」对应工程师语境中的 library / inventory，比口语化的「仓」更克制；英文副标收敛为单一品牌词并拉开字距，
+不再重复中文主名里已有的品类词。
 品牌文案集中在 `src/shared/brand.ts`（页面标题与全部界面）与 `server/domain/brand.js`（二维码文本）；`index.html` 的静态值仅作无 JS 兜底，运行时由常量覆盖。
 
 品牌标记（单色印章式：一条圆角 L 形路径代表 Leeco 与料架，右上薄荷小方点代表一枚元件；去渐变、仅两个几何元素）：
@@ -38,7 +39,7 @@ npm run seed
 npm run check       # typecheck + 单测 + 接口契约 + 构建
 ```
 
-当前基线：单测 156 项、接口契约 44 项，`vue-tsc` 0 错误。
+当前基线：单测 156 项、接口契约 44 项，`vue-tsc` 0 错误；`npm run check:paths` 验证代码不含本机绝对路径，项目目录改名后无需改代码。
 
 ## 目录一览
 

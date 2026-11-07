@@ -20,8 +20,9 @@
     "test:e2e": "node tests/e2e/ui-efficiency.mjs",
     "seed": "node tools/seed/demo.mjs seed",
     "seed:clean": "node tools/seed/demo.mjs clean",
-    "check": "npm run typecheck && npm run test:unit && npm run test:api && npm run build",
-    "test:e2e:report": "node tests/e2e/ui-report-improvements.mjs"
+    "check": "npm run check:paths && npm run typecheck && npm run test:unit && npm run test:api && npm run build",
+    "test:e2e:report": "node tests/e2e/ui-report-improvements.mjs",
+    "check:paths": "node tools/scripts/check-portability.mjs"
   },
   "dependencies": {
     "naive-ui": "^2.40.1",

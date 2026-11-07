@@ -60,7 +60,7 @@
 | 项 | 旧 | 新 | 说明 |
 | --- | --- | --- | --- |
 | 中文主名 | 樂創元件仓 | **樂創元件库** | 「库」对应 library / inventory，更贴合工程师语境 |
-| 英文副标 | LEECO PARTSHUB | **LEECO PARTS HUB** | 分写、拉开字距、降低字重，视觉更透气 |
+| 英文副标 | LEECO PARTSHUB | **LEECO** | 先分写为 `LEECO PARTS HUB`，再收敛为单一品牌词（见下节） |
 | 产品标识 | Leeco PartsHub | 不变 | 文档与部署上下文沿用，避免与技术标识脱节 |
 | 技术标识 | `leeco-partshub` | 不变 | 包名与 EdgeOne KV 命名空间绑定，改名会破坏部署 |
 
@@ -97,3 +97,12 @@ UI 验收脚本核对侧栏/登录页文字与浏览器标题。登录页顺带�
 
 Before：多色渐变 + 四格堆叠 + 青点，视觉像积木图标。
 After：单色底 + 一条圆角 L + 一枚元件点，几何精确、留白充足，明暗主题均清晰。
+
+
+## 英文副标再简化与目录改名可移植性（本轮追加）
+
+- 侧栏副标由 `LEECO PARTS HUB` 改为 **`LEECO`**：中文主名「樂創元件库」已表达品类，英文再写 PARTS HUB 属重复；单词与单色 L 印章直接呼应。字号 8.5→9px、字距 .22em→.3em，保持视觉重量。产品标识 `Leeco PartsHub` 仍用于浏览器标题、文档与部署说明，信息不丢。
+- 登录页副标随之变为 `LEECO · 元器件库存管理系统`；UI 验收新增断言「英文副标为单一短词（长度 ≤ 8 且不含空格）」，不写死具体文案，避免后续改名时误报。
+- 为「稍后修改项目文件夹名」新增 `tools/scripts/check-portability.mjs` 与 `npm run check:paths`：扫描 `src / server / functions / tools / tests` 及根配置中写死的本机绝对路径，命中即以退出码 1 报错。`npm run check` 已把它串为第一道门禁。
+- 反向验证：临时写入一份含 `C:/Users/...` 的探针文件 → 检查准确报出文件与行号、退出码 1；删除探针 → 扫描 116 个文件、0 命中、退出码 0。当前源码与配置全部使用相对路径或 `import.meta.url` / `process.cwd()` 推导，顶层目录改名不影响构建与运行。
+- `README.md`、`docs/DEVELOPMENT.md` 已补充该命令；`docs/assets/` 截图随副标变化重拍。

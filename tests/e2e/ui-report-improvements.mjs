@@ -42,6 +42,7 @@ log('品牌标记几何元素:', `路径 ${markPaths} / 元件 ${markRects} / �
 log('标记仅两个图形且无渐变:', markPaths === 1 && markRects === 1 && markGradients === 0 && markBg === 'none')
 log('品牌主名:', brandName, '| 英文副标:', brandEnglish, '| 页面标题:', await page.title())
 log('品牌名不含旧称:', !brandName.includes('元件仓') && !brandEnglish.includes('PARTSHUB'))
+log('英文副标为单一短词:', brandEnglish.length <= 8 && !brandEnglish.includes(' '), brandEnglish)
 await page.locator('.sider .brand').screenshot({ path: `${SHOTS}/brand-mark.png` })
 await page.screenshot({ path: `${SHOTS}/report-dashboard.png` })
 const markCtx = await browser.newContext({ viewport: { width: 1440, height: 940 }, deviceScaleFactor: 2, locale: 'zh-CN' })
