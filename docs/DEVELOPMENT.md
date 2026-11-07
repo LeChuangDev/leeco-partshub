@@ -47,6 +47,18 @@ npm run test:api    # 进程内 API 契约测试（无需服务）
 npm run build       # 生产构建
 npm run check       # 路径自检 + 以上四项串行执行
 npm run check:paths # 单独验证代码不含本机绝对路径（项目目录改名后运行）
+
+## 逐模块功能验证
+
+```bash
+npm run verify           # 完整门禁 + 后端模块闭环 + 前端逐路由（需先启动 dev:all）
+npm run verify:modules   # 后端 8 个模块，隔离实例自启动/自清理，不触碰演示库
+npm run verify:ui        # 浏览器逐路由、全局快捷键、主题、移动端与登录页
+```
+
+`verify:modules` 通过 `PORT` 与 `KV_FILE` 环境变量启动独立 API 实例（默认 8788 + 临时 KV），
+结束自动关闭并删除临时数据；`verify:ui` 只读，不写演示库。截图输出到 `tests/.artifacts/modules/`。
+逐模块结论见 [docs/VERIFICATION-REPORT.md](VERIFICATION-REPORT.md)。
 ```
 
 UI 端到端验证需要先启动 `npm run dev:all`：

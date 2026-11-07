@@ -39,7 +39,7 @@ npm run seed
 npm run check       # typecheck + 单测 + 接口契约 + 构建
 ```
 
-当前基线：单测 156 项、接口契约 44 项，`vue-tsc` 0 错误；`npm run check:paths` 验证代码不含本机绝对路径，项目目录改名后无需改代码。
+当前基线：单测 158 项、接口契约 44 项，`vue-tsc` 0 错误；`npm run check:paths` 验证代码不含本机绝对路径，项目目录改名后无需改代码。
 
 ## 目录一览
 
@@ -69,6 +69,7 @@ tools/        本地 API 服务与演示数据脚本
 - [API 参考](docs/API.md)：全部接口、参数与业务约束
 - [ADR 0001](docs/adr/0001-layered-architecture.md)：为什么采用当前分层
 - [报告改进对照](docs/REPORT-REMEDIATION.md)：分析报告 v2 各优先级的落地状态
+- [逐模块验证报告](docs/VERIFICATION-REPORT.md)：8 个后端模块 98 项 + 9 个前端页面 38 项
 
 ![操作日志](docs/assets/audit-log.png)
 

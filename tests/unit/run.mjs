@@ -335,6 +335,10 @@ async function main() {
   ok('简版码行数不超过 8', qrBrief.split('\n').length <= 8, `实际 ${qrBrief.split('\n').length}`)
   ok('简版码压缩库位', qrBrief.includes('库位 01层/电阻盒'))
   ok('localhost 不追加详情链接', !isPublicOrigin('http://127.0.0.1:5173') && isPublicOrigin('https://parts.example.com'))
+  ok('构造函数拒绝本地详情链接（器件码）',
+    !buildPartQrText(pR6, { quantity: 1, mode: 'full', origin: 'http://127.0.0.1:5173' }).includes('127.0.0.1'))
+  ok('构造函数拒绝本地详情链接（库位码）',
+    !buildLocationQrText({ id: 'loc_local', name: '电阻盒' }, { path: 'A柜', origin: 'http://localhost:5173' }).includes('localhost'))
   const locQr = buildLocationQrText({ id: 'loc_1', name: '电阻盒', code: 'A-01' }, {
     path: 'A柜 / 01层 / 电阻盒', partKinds: 12, quantity: 340
   })

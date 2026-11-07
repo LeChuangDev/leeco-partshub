@@ -49,7 +49,8 @@ export function buildPartQrText(part, opts = {}) {
   const qty = Number(opts.quantity ?? 0)
   const loc = clip(opts.locationPath || '', 40)
   const pairs = paramPairs(part.params, opts.paramLabels || {}, mode === 'full' ? 14 : 2)
-  const link = clean(opts.origin)
+  // 详情链接只有公网地址才有意义；本地地址印在标签上无法从手机打开
+  const link = isPublicOrigin(opts.origin) ? clean(opts.origin) : ''
 
   const lines = [`${TITLE} · ${mode === 'full' ? '器件档案' : '器件'}`, name]
   if (model) lines.push(`型号 ${model}`)
@@ -86,7 +87,7 @@ export function buildLocationQrText(loc, opts = {}) {
   const kinds = Number(opts.partKinds ?? 0)
   const qty = Number(opts.quantity ?? 0)
   if (kinds || qty) lines.push(`存放 ${kinds} 种 / ${qty} 件`)
-  if (clean(opts.origin)) lines.push(`详情 ${clean(opts.origin)}/#/locations?focus=${loc.id}`)
+  if (isPublicOrigin(opts.origin)) lines.push(`详情 ${clean(opts.origin)}/#/locations?focus=${loc.id}`)
   return lines.join('\n')
 }
 

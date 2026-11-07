@@ -2,6 +2,7 @@
 // 本地开发 API 服务端：复用 server/http/router.js，使用 FileKV 持久化，注入开发令牌。
 // 仅处理 /api/*；前端静态资源由 Vite dev server (5173) 提供并通过代理转发 /api 到本服务。
 // 数据落在 .data/local-kv.json（可通过 KV_FILE 覆盖），与生产 EdgeOne KV 隔离。
+// PORT / KV_FILE 可由环境变量指定，便于并行启动隔离的验证实例。
 import http from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -9,7 +10,7 @@ import { handleApi } from '../../server/http/router.js'
 import { FileKV } from './file-kv.js'
 import { DEV_TOKEN } from '../../server/http/auth.js'
 
-const PORT = 8787
+const PORT = Number(process.env.PORT) || 8787
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const kvFile = process.env.KV_FILE || join(__dirname, '../../.data/local-kv.json')
 const kv = new FileKV(kvFile)

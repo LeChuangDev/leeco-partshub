@@ -22,7 +22,10 @@
     "seed:clean": "node tools/seed/demo.mjs clean",
     "check": "npm run check:paths && npm run typecheck && npm run test:unit && npm run test:api && npm run build",
     "test:e2e:report": "node tests/e2e/ui-report-improvements.mjs",
-    "check:paths": "node tools/scripts/check-portability.mjs"
+    "check:paths": "node tools/scripts/check-portability.mjs",
+    "verify:modules": "node tests/verification/modules.mjs",
+    "verify:ui": "node tests/verification/ui-modules.mjs",
+    "verify": "npm run check && npm run verify:modules && npm run verify:ui"
   },
   "dependencies": {
     "naive-ui": "^2.40.1",
