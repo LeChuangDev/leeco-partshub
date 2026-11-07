@@ -93,6 +93,7 @@ node tests/e2e/ui-report-improvements.mjs          # 品牌标记、操作日志
 - **导入撤销**：提交后 10 分钟内结果栏显示倒计时与撤销按钮，服务端按 `batchId` 只删除本次新建对象。
 - **恢复防护**：上传备份 → 服务端预演 → 输入 `RESTORE` → 覆盖写入；写入失败整体回滚，会话内可手动回滚。
 - **扫码合并**：同器件 + 同库位 + 同单价的连续扫码并入同一批次，不再产生大量 `quantity=1` 碎片。
+- **品牌文案**：`src/shared/brand.ts`（前端）与 `server/domain/brand.js`（二维码）是唯一来源；改名前先确认 `LEGACY_BRAND_TITLES` 已包含旧名，避免旧标签失效。
 
 | `KV_FILE` | 本地 FileKV 路径 | 仅本地 |
 | `KV` | EdgeOne 边缘 KV 绑定 | 由控制台注入 |

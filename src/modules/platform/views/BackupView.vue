@@ -69,7 +69,7 @@
         <div class="sec-body">
           <div class="sec-title">关于</div>
           <div class="sec-desc">
-            樂創元件仓 Leeco PartsHub · 个人元器件库存管理系统<br />
+            {{ BRAND.name }} {{ BRAND.product }} · {{ BRAND.tagline }}<br />
             架构：Vue 3 + Vite + Naive UI + Pinia ／ EdgeOne Serverless（边缘函数 + 边缘 KV）<br />
             当前版本范围：主数据 · 库存位置 · 订单导入 · 项目齐套 · 统计看板 · 操作日志
           </div>
@@ -115,6 +115,7 @@ import { api, getToken } from '@/shared/api'
 import { useAuth } from '@/modules/auth/stores/auth'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import PageHeader from '@/shared/ui/PageHeader.vue'
+import { BRAND } from '@/shared/brand'
 import { emitDataChanged } from '@/shared/utils/events'
 
 const message = useMessage()

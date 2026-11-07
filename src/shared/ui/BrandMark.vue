@@ -1,5 +1,5 @@
 <template>
-  <!-- 品牌标记：2×2 料格构成 L（Leeco / 元件仓），虚线格 + 青色点表示待取料位 -->
+  <!-- 品牌标记：2×2 料格构成 L（Leeco / 元件库），虚线格 + 青色点表示待取料位 -->
   <span class="brand-mark" :style="{ '--mark-size': size + 'px' }" aria-hidden="true">
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect x="3.2" y="3.2" width="7.6" height="7.6" rx="2.3" fill="#fff" />

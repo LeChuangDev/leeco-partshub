@@ -2,8 +2,8 @@
   <div class="wrap">
     <div class="card login-card">
       <div class="login-mark"><BrandMark :size="60" /></div>
-      <h1 class="title">樂創元件仓</h1>
-      <p class="sub">Leeco PartsHub · 个人元器件库存管理系统</p>
+      <h1 class="title">{{ BRAND.name }}</h1>
+      <p class="sub">{{ BRAND.english }} · {{ BRAND.tagline }}</p>
 
       <div v-if="devBypass" class="bypass">
         <AppIcon name="check" :size="18" />
@@ -19,7 +19,7 @@
         :disabled="devBypass"
         @keyup.enter="submit"
       />
-      <p class="hint">令牌配置在 EdgeOne 边缘函数环境变量 <code>AUTH_TOKEN</code> 中。<br/>本地开发默认令牌：<code>dev-leeco-token</code></p>
+      <p class="hint">令牌由 EdgeOne 环境变量 <code>AUTH_TOKEN</code> 校验。<br/>本地默认：<code>dev-leeco-token</code></p>
       <n-button type="primary" size="large" block strong :loading="loading" @click="submit">
         {{ devBypass ? '直接进入系统' : '进入系统' }}
       </n-button>
@@ -31,16 +31,18 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NInput, NButton, useMessage } from 'naive-ui'
-import { api, getToken } from '@/shared/api'
+import { api } from '@/shared/api'
 import { useAuth } from '@/modules/auth/stores/auth'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import BrandMark from '@/shared/ui/BrandMark.vue'
+import { BRAND } from '@/shared/brand'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuth()
 const message = useMessage()
-const token = ref(getToken() || 'dev-leeco-token')
+// 不预填开发令牌：生产环境该值无效，空输入框也更清晰
+const token = ref('')
 const loading = ref(false)
 const devBypass = ref(false)
 
@@ -100,7 +102,7 @@ async function submit() {
   border: 1px solid var(--outline); border-radius: 20px; box-shadow: var(--shadow-2);
 }
 .login-mark { display: flex; justify-content: center; margin-bottom: 18px; }
-.title { font-size: 24px; font-weight: 800; margin: 0; letter-spacing: -.02em; }
+.title { font-size: 23px; font-weight: 650; margin: 0; letter-spacing: .015em; }
 .sub { color: var(--text-2); font-size: 13px; margin: 6px 0 24px; }
 .hint { color: var(--text-3); font-size: 12px; margin: 14px 0 18px; line-height: 1.6; }
 .hint code { background: rgba(120,128,140,.14); padding: 1px 6px; border-radius: 6px; color: var(--primary); }

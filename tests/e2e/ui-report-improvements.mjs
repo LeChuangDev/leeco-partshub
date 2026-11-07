@@ -33,9 +33,26 @@ const wait = (ms) => page.waitForTimeout(ms)
 await page.goto(`${BASE}/#/dashboard`)
 await wait(1800)
 const brandCount = await page.locator('.brand-mark svg rect').count()
+const brandName = await page.locator('.sider .brand-text .b1').innerText()
+const brandEnglish = await page.locator('.sider .brand-text .b2').innerText()
 log('品牌标记几何元素数:', brandCount)
+log('品牌主名:', brandName, '| 英文副标:', brandEnglish, '| 页面标题:', await page.title())
+log('品牌名不含旧称:', !brandName.includes('元件仓') && !brandEnglish.includes('PARTSHUB'))
 await page.locator('.sider .brand').screenshot({ path: `${SHOTS}/brand-mark.png` })
 await page.screenshot({ path: `${SHOTS}/report-dashboard.png` })
+
+// 登录页品牌区：拦截鉴权查询，使页面停留在登录态便于核对名称
+const loginCtx = await browser.newContext({ viewport: { width: 1440, height: 940 }, locale: 'zh-CN' })
+await loginCtx.route('**/api/auth/check', (route) => route.fulfill({
+  status: 401, contentType: 'application/json',
+  body: JSON.stringify({ code: 401, data: { authenticated: false }, msg: 'Unauthorized' })
+}))
+const loginPage = await loginCtx.newPage()
+await loginPage.goto(`${BASE}/#/login`)
+await loginPage.waitForTimeout(900)
+log('登录页标题:', await loginPage.locator('h1.title').innerText())
+await loginPage.screenshot({ path: `${SHOTS}/report-login.png` })
+await loginCtx.close()
 
 // ---------- 操作日志 ----------
 await page.goto(`${BASE}/#/audit`)

@@ -5,8 +5,8 @@
       <div class="brand" :class="{ center: collapsed }">
         <BrandMark :size="36" />
         <div v-if="!collapsed" class="brand-text">
-          <div class="b1">樂創元件仓</div>
-          <div class="b2">LEECO PARTSHUB</div>
+          <div class="b1">{{ BRAND.name }}</div>
+          <div class="b2">{{ BRAND.english }}</div>
         </div>
       </div>
 
@@ -37,8 +37,8 @@
           <div class="brand">
             <BrandMark :size="36" />
             <div class="brand-text">
-              <div class="b1">樂創元件仓</div>
-              <div class="b2">LEECO PARTSHUB</div>
+              <div class="b1">{{ BRAND.name }}</div>
+              <div class="b2">{{ BRAND.english }}</div>
             </div>
           </div>
           <n-menu :value="activeKey" :options="menuOptions" :indent="16" @update:value="onMenu" />
@@ -54,7 +54,7 @@
             <AppIcon name="menu" :size="18" />
           </button>
           <nav class="crumb">
-            <span class="crumb-root">樂創</span>
+            <span class="crumb-root">{{ BRAND.shortName }}</span>
             <AppIcon name="chevronRight" :size="12" />
             <span class="crumb-cur">{{ currentTitle }}</span>
           </nav>
@@ -107,6 +107,7 @@ import { useTheme } from '@/shared/stores/theme'
 import { useUi } from '@/shared/stores/ui'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import BrandMark from '@/shared/ui/BrandMark.vue'
+import { BRAND } from '@/shared/brand'
 import QuickAddModal from '@/modules/inventory/components/QuickAddModal.vue'
 import CommandPalette from '@/app/components/CommandPalette.vue'
 import ScanModal from '@/modules/inventory/components/ScanModal.vue'
@@ -135,7 +136,7 @@ const menuOptions = [
 ]
 
 const activeKey = computed(() => route.name as string)
-const currentTitle = computed(() => (route.meta?.title as string) || '樂創元件仓')
+const currentTitle = computed(() => (route.meta?.title as string) || BRAND.name)
 
 function onMenu(key: string) {
   drawer.value = false
@@ -240,10 +241,10 @@ function onUser(key: string) {
 .brand { display: flex; align-items: center; gap: 12px; padding: 17px 18px 15px; min-height: 66px; }
 .brand.center { justify-content: center; padding: 18px 0 14px; }
 .brand-text { min-width: 0; }
-.brand-text .b1 { font-weight: 700; font-size: 15.5px; letter-spacing: .005em; line-height: 1.25; color: var(--text-1); }
+.brand-text .b1 { font-weight: 650; font-size: 15px; letter-spacing: .02em; line-height: 1.3; color: var(--text-1); }
 .brand-text .b2 {
-  font-size: 9px; color: var(--text-3); letter-spacing: .19em;
-  margin-top: 3px; font-weight: 600; white-space: nowrap;
+  font-size: 8.5px; color: var(--text-3); letter-spacing: .22em;
+  margin-top: 4px; font-weight: 500; white-space: nowrap;
 }
 .menu-label {
   font-size: 10.5px; font-weight: 700; letter-spacing: .12em; color: var(--text-3);

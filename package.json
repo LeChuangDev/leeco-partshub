@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "樂創元件仓 Leeco PartsHub — 个人元器件库存管理系统（EdgeOne Serverless / Vue 3）",
+  "description": "樂創元件库 Leeco PartsHub — 个人元器件库存管理系统（EdgeOne Serverless / Vue 3）",
   "engines": {
     "node": ">=18.17"
   },

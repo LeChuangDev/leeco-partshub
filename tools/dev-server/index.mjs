@@ -41,7 +41,7 @@ function buildRequest(req) {
 const server = http.createServer(async (req, res) => {
   if (!req.url.startsWith('/api')) {
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
-    res.end('Leeco PartsHub local API. Only /api/* is served here.')
+    res.end('樂創元件库 local API. Only /api/* is served here.')
     return
   }
   try {
@@ -59,7 +59,7 @@ const server = http.createServer(async (req, res) => {
 })
 
 server.listen(PORT, () => {
-  console.log(`✅ Leeco PartsHub API 已启动: http://127.0.0.1:${PORT}`)
+  console.log(`✅ 樂創元件库 API 已启动: http://127.0.0.1:${PORT}`)
   console.log(`   开发令牌 X-Auth-Token: ${env.AUTH_TOKEN}`)
   console.log(`   本地数据文件: ${kvFile}`)
 })

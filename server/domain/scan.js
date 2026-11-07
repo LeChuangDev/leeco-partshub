@@ -6,7 +6,7 @@
 //   3. 结构化 JSON（USB 扫码枪或外部系统常见）；
 //   4. 任意型号 / 料号 / 名称片段，交给后端模糊检索。
 
-const TITLE = '樂創元件仓'
+import { KNOWN_BRAND_TITLES } from './brand.js'
 
 // 二维码里是「型号 ABC」的空格写法，手工输入常见「型号：ABC」，两种都要认
 const KEY_RE = /^(型号|封装|分类|品牌|库存|库位|编码|存放|内部料号|供应商料号|详情|参数)(?:\s*[：:]\s*|\s+)(.*)$/
@@ -50,7 +50,9 @@ export function parseScanPayload(text) {
   if (raw.startsWith('{') || raw.startsWith('[')) return { kind: 'query', raw, query: raw }
 
   const lines = raw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
-  const isQr = raw.includes(TITLE) || lines.some((l) => /^(型号|封装|内部料号|库存|库位)\s/.test(l))
+  // 兼容历史标签：旧品牌名的二维码仍按本系统格式解析
+  const isQr = KNOWN_BRAND_TITLES.some((t) => raw.includes(t)) ||
+    lines.some((l) => /^(型号|封装|内部料号|库存|库位)\s/.test(l))
   if (isQr) return parseQrText(lines, raw)
 
   // 纯文本条码：去掉常见前缀（如 P/N:、MODEL:）

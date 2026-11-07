@@ -25,6 +25,7 @@ import {
   saveProjectLines, importProjectBom, analyzeProject, consumeProject
 } from '../../server/application/project.service.js'
 import { buildPartQrText, buildLocationQrText, isPublicOrigin } from '../../server/domain/qr.js'
+import { BRAND_TITLE, LEGACY_BRAND_TITLES } from '../../server/domain/brand.js'
 import { parseScanPayload } from '../../server/domain/scan.js'
 import { mapRow, detectPlatform } from '../../server/domain/import-map.js'
 import { normalizePackage, parseSI, formatSI, eiaCode } from '../../server/domain/normalize.js'
@@ -365,6 +366,15 @@ async function main() {
   ok('纯条码降级为检索词', sc7.kind === 'query' && sc7.query === 'C2044471')
   const sc8 = parseScanPayload(JSON.stringify({ type: 'location', id: 'loc_2', code: 'B-02' }))
   ok('JSON 库位识别', sc8.kind === 'location' && sc8.id === 'loc_2')
+
+  console.log('\n[10b] 品牌改名后的标签兼容')
+  ok('新二维码使用新品牌名', qrFull.includes(BRAND_TITLE) && !qrFull.includes(LEGACY_BRAND_TITLES[0]), BRAND_TITLE)
+  const legacyQr = qrFull.replace(BRAND_TITLE, LEGACY_BRAND_TITLES[0])
+  const scLegacy = parseScanPayload(legacyQr)
+  ok('旧品牌名二维码仍识别为器件', scLegacy.kind === 'part' && scLegacy.model === 'RC0805FR-0710KL', JSON.stringify(scLegacy))
+  const legacyLoc = locQr.replace(BRAND_TITLE, LEGACY_BRAND_TITLES[0])
+  const scLegacyLoc = parseScanPayload(legacyLoc)
+  ok('旧品牌名库位码仍识别为库位', scLegacyLoc.kind === 'location' && scLegacyLoc.code === 'A-01', JSON.stringify(scLegacyLoc))
 
   console.log('\n[11] 移动库存位置')
   const locMoveA = await createLocation(kv, { name: '测试柜 A', code: 'T-A' })

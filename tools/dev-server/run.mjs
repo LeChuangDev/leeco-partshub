@@ -22,7 +22,7 @@ function shutdown() {
 process.on('SIGINT', shutdown)
 process.on('SIGTERM', shutdown)
 
-console.log('🚀 启动 Leeco PartsHub 开发环境...')
+console.log('🚀 启动 樂創元件库 开发环境...')
 start('api', 'node', ['tools/dev-server/index.mjs'])
 start('web', 'npm', ['run', 'dev'])
 

@@ -5,7 +5,7 @@
 //   2. compact 版控制在 8 行内，保证 14mm 小标签也能稳定识别；
 //   3. 部署到公网后可选追加详情链接，方便在手机上打开完整档案。
 
-const TITLE = '樂創元件仓'
+import { BRAND_TITLE as TITLE } from './brand.js'
 
 function clean(v) {
   return String(v ?? '').replace(/[\r\n\t]+/g, ' ').trim()
