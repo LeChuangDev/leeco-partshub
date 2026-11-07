@@ -13,7 +13,7 @@
 「库」对应工程师语境中的 library / inventory，比口语化的「仓」更克制；英文分写并拉开字距。
 品牌文案集中在 `src/shared/brand.ts`（页面标题与全部界面）与 `server/domain/brand.js`（二维码文本）；`index.html` 的静态值仅作无 JS 兜底，运行时由常量覆盖。
 
-品牌标记（2×2 料格构成 L，虚线格与青色点表示待取料位）：
+品牌标记（单色印章式：一条圆角 L 形路径代表 Leeco 与料架，右上薄荷小方点代表一枚元件；去渐变、仅两个几何元素）：
 
 ![Leeco 品牌标记](docs/assets/brand-mark.png)
 

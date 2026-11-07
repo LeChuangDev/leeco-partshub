@@ -1,17 +1,26 @@
 <template>
-  <!-- 品牌标记：2×2 料格构成 L（Leeco / 元件库），虚线格 + 青色点表示待取料位 -->
+  <!--
+    品牌标记 v2：单色印章式设计。
+    - 一条圆角 L 形路径 = Leeco 首字母，也是料架的侧板与底板；
+    - 右上小方点 = 一枚元件 / 当前料位，是全图唯一的强调色。
+     刻意去掉渐变、高光与 2×2 方格堆叠，只保留两个几何元素。
+  -->
   <span class="brand-mark" :style="{ '--mark-size': size + 'px' }" aria-hidden="true">
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="3.2" y="3.2" width="7.6" height="7.6" rx="2.3" fill="#fff" />
-      <rect x="3.2" y="13.2" width="7.6" height="7.6" rx="2.3" fill="#fff" fill-opacity=".9" />
-      <rect x="13.2" y="13.2" width="7.6" height="7.6" rx="2.3" fill="#fff" fill-opacity=".78" />
-      <rect x="13.65" y="3.65" width="6.7" height="6.7" rx="1.95" stroke="#fff" stroke-opacity=".5" stroke-width="1.1" />
-      <circle cx="17" cy="7" r="2.05" fill="#b9fff0" />
+      <path
+        d="M7.4 5.5v10.7a2.6 2.6 0 0 0 2.6 2.6H19.2"
+        stroke="#fff"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+      <rect x="14.5" y="5.4" width="4.7" height="4.7" rx="1.5" fill="#b9fff0" />
     </svg>
   </span>
 </template>
 
 <script setup lang="ts">
+// 纯装饰性标记：默认 36px，登录页用 60px；无禁用态与加载态（不承载交互状态）。
 withDefaults(defineProps<{ size?: number }>(), { size: 36 })
 </script>
 
@@ -24,60 +33,54 @@ withDefaults(defineProps<{ size?: number }>(), { size: 36 })
   width: var(--mark-size);
   height: var(--mark-size);
   flex: 0 0 var(--mark-size);
-  border-radius: calc(var(--mark-size) * .32);
-  overflow: hidden;
-  background: linear-gradient(145deg, #7d8dff 0%, #5b6cff 46%, #8b63f0 100%);
+  border-radius: calc(var(--mark-size) * .3);
+  /* 单层纯色：不做多色渐变，也不叠高光 */
+  background: #3f49c9;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .34),
-    inset 0 -1px 0 rgba(35, 28, 110, .16),
-    0 3px 8px rgba(74, 88, 220, .2),
-    0 10px 22px rgba(91, 108, 255, .18);
-  transition: transform .26s cubic-bezier(.2, 0, 0, 1), box-shadow .26s cubic-bezier(.2, 0, 0, 1);
-}
-
-/* 顶部微光：只在高光区出现，不做整块廉价渐变叠加 */
-.brand-mark::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(115% 85% at 16% 6%, rgba(255, 255, 255, .24), transparent 62%);
-}
-
-.brand-mark::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16);
+    inset 0 0 0 1px rgba(255, 255, 255, .14),
+    0 2px 6px rgba(38, 46, 130, .18);
+  transition: transform .24s cubic-bezier(.2, 0, 0, 1), box-shadow .24s cubic-bezier(.2, 0, 0, 1);
 }
 
 .brand-mark svg {
   position: relative;
-  width: 66%;
-  height: 66%;
+  width: 68%;
+  height: 68%;
 }
 
+/* Hover：仅 1px 位移，阴影仍保持单层 */
 .brand:hover .brand-mark {
   transform: translateY(-1px);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .4),
-    inset 0 -1px 0 rgba(35, 28, 110, .16),
-    0 5px 12px rgba(74, 88, 220, .26),
-    0 14px 28px rgba(91, 108, 255, .24);
+    inset 0 0 0 1px rgba(255, 255, 255, .2),
+    0 4px 10px rgba(38, 46, 130, .24);
 }
 
-.brand:active .brand-mark { transform: scale(.98); }
+.brand:active .brand-mark { transform: scale(.97); }
 
+/* 若未来被链接包裹，仍可给出清晰焦点环 */
+.brand-mark:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* 暗色主题：底色提亮一档，避免与深色侧栏融为一体 */
 [data-theme='dark'] .brand-mark {
-  background: linear-gradient(145deg, #6c7df2 0%, #4f46d8 48%, #7c4de0 100%);
+  background: #5d66e8;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .24),
-    inset 0 -1px 0 rgba(10, 8, 40, .3),
-    0 4px 14px rgba(66, 56, 180, .38);
+    inset 0 0 0 1px rgba(255, 255, 255, .18),
+    0 2px 8px rgba(0, 0, 0, .28);
+}
+
+[data-theme='dark'] .brand:hover .brand-mark {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .26),
+    0 4px 12px rgba(0, 0, 0, .34);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .brand-mark { transition: none; }
   .brand:hover .brand-mark { transform: none; }
+  .brand:active .brand-mark { transform: none; }
 }
 </style>
