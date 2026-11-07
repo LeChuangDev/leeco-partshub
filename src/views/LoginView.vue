@@ -1,0 +1,112 @@
+<template>
+  <div class="wrap">
+    <div class="card login-card">
+      <div class="logo"><AppIcon name="package" :size="34" /></div>
+      <h1 class="title">樂創元件仓</h1>
+      <p class="sub">Leeco PartsHub · 个人元器件库存管理系统</p>
+
+      <div v-if="devBypass" class="bypass">
+        <AppIcon name="check" :size="18" />
+        <span>开发免密模式：本地服务已关闭令牌校验，可直接进入验证功能。</span>
+      </div>
+
+      <n-input
+        v-model:value="token"
+        type="password"
+        show-password-on="click"
+        placeholder="请输入访问令牌 X-Auth-Token"
+        size="large"
+        :disabled="devBypass"
+        @keyup.enter="submit"
+      />
+      <p class="hint">令牌配置在 EdgeOne 边缘函数环境变量 <code>AUTH_TOKEN</code> 中。<br/>本地开发默认令牌：<code>dev-leeco-token</code></p>
+      <n-button type="primary" size="large" block strong :loading="loading" @click="submit">
+        {{ devBypass ? '直接进入系统' : '进入系统' }}
+      </n-button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { NInput, NButton, useMessage } from 'naive-ui'
+import { api, getToken } from '../api/client'
+import { useAuth } from '../stores/auth'
+import AppIcon from '../components/AppIcon.vue'
+
+const router = useRouter()
+const route = useRoute()
+const auth = useAuth()
+const message = useMessage()
+const token = ref(getToken() || 'dev-leeco-token')
+const loading = ref(false)
+const devBypass = ref(false)
+
+/** 记住进入登录页前想访问的地址，登录后原路返回 */
+function goAfterLogin() {
+  const target = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+  if (target && target !== '/login') router.replace(target)
+  else router.replace({ name: 'dashboard' })
+}
+
+// 开发免密：本地服务关闭鉴权时，自动放行直接进入，免去输令牌步骤。
+onMounted(async () => {
+  try {
+    const r = await api.authCheck()
+    if (r.devBypass) {
+      devBypass.value = true
+      auth.login('dev-bypass')
+      goAfterLogin()
+      return
+    }
+    if (r.authenticated) goAfterLogin()
+  } catch {
+    /* 走正常登录流程 */
+  }
+})
+
+async function submit() {
+  if (!token.value.trim()) { message.warning('请输入令牌'); return }
+  loading.value = true
+  try {
+    auth.login(token.value.trim())
+    const r = await api.authCheck()
+    if (r.authenticated) {
+      message.success('验证通过')
+      goAfterLogin()
+    } else {
+      message.error('令牌无效')
+    }
+  } catch (e: any) {
+    message.error(e.message || '验证失败')
+  } finally {
+    loading.value = false
+  }
+}
+</script>
+
+<style scoped>
+.wrap {
+  height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: radial-gradient(1100px 560px at 50% -10%, var(--primary-soft) 0%, var(--bg) 62%);
+}
+[data-theme='dark'] .wrap {
+  background: radial-gradient(1100px 560px at 50% -10%, rgba(91, 108, 255, .16) 0%, var(--bg) 62%);
+}
+.login-card {
+  width: 380px; max-width: 92vw; padding: 40px 32px; text-align: center;
+  border: 1px solid var(--outline); border-radius: 20px; box-shadow: var(--shadow-2);
+}
+.logo {
+  width: 60px; height: 60px; margin: 0 auto 16px; border-radius: 17px; color: #fff;
+  background: linear-gradient(140deg, #6b7bff, #8f7bff 70%, #a78bfa);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-primary);
+}
+.title { font-size: 24px; font-weight: 800; margin: 0; letter-spacing: -.02em; }
+.sub { color: var(--text-2); font-size: 13px; margin: 6px 0 24px; }
+.hint { color: var(--text-3); font-size: 12px; margin: 14px 0 18px; line-height: 1.6; }
+.hint code { background: rgba(120,128,140,.14); padding: 1px 6px; border-radius: 6px; color: var(--primary); }
+.bypass { display: flex; align-items: center; gap: 8px; justify-content: center; color: var(--secondary); font-size: 12px; background: rgba(20,184,166,.12); padding: 8px 12px; border-radius: 10px; margin-bottom: 16px; }
+</style>

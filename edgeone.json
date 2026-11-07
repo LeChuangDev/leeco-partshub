@@ -1,0 +1,23 @@
+{
+  "comment": "EdgeOne Pages 部署描述（参考）。在 EdgeOne Pages 控制台创建项目并连接本仓库后，按以下配置构建与绑定。",
+  "build": {
+    "command": "npm run build",
+    "output": "dist"
+  },
+  "functions": {
+    "dir": "functions",
+    "runtime": "edge",
+    "note": "functions/api/[...path].js 为 catch-all 入口，自动复用 shared/router.js 逻辑"
+  },
+  "kv": {
+    "namespace": "leeco-partshub",
+    "binding": "KV",
+    "note": "在 EdgeOne 控制台创建边缘 KV 命名空间 leeco-partshub，并绑定到函数环境变量名 KV；可写/读经由 shared/kv.js 的 EdgeOneKV 适配器访问"
+  },
+  "env": {
+    "AUTH_TOKEN": "请替换为你的强令牌，并在前端登录页输入相同值"
+  },
+  "staticSource": {
+    "note": "可选：将 dist 上传至腾讯云 COS 私有桶，由 EdgeOne 回源全球加速；存储桶无需公开。本仓库默认由 EdgeOne Pages 直接托管 dist。"
+  }
+}

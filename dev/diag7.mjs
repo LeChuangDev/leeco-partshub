@@ -1,0 +1,11 @@
+import { chromium } from 'playwright'
+const b = await chromium.launch({ channel: 'chrome', headless: true })
+const p = await (await b.newContext({ viewport: { width: 1440, height: 940 } })).newPage()
+p.on('pageerror', e => console.log('PAGEERR', e.message))
+p.on('console', m => console.log('[', m.type(), ']', m.text().slice(0, 300)))
+await p.goto('http://127.0.0.1:5173/#/locations'); await p.waitForTimeout(2500)
+console.log('url', p.url())
+console.log('body', (await p.locator('body').innerText()).slice(0, 300))
+console.log('side count', await p.locator('.side').count(), 'aside', await p.locator('aside').count())
+console.log('html', (await p.content()).slice(0, 400))
+await b.close()

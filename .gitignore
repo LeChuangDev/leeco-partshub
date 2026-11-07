@@ -1,0 +1,6 @@
+node_modules/
+dist/
+dev/.kv-data.json
+*.log
+.DS_Store
+.vite/
