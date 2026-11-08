@@ -24,7 +24,7 @@
       <div class="sider-foot">
         <template v-if="!collapsed">
           <span class="dot" />
-          <span>数据存储于 EdgeOne KV</span>
+          <span>数据存储于 {{ IS_OFFLINE ? '本地离线文件' : 'EdgeOne KV' }}</span>
         </template>
         <span v-else class="dot" />
       </div>
@@ -108,6 +108,7 @@ import { useUi } from '@/shared/stores/ui'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import BrandMark from '@/shared/ui/BrandMark.vue'
 import { BRAND } from '@/shared/brand'
+import { IS_OFFLINE } from '@/shared/offline'
 import QuickAddModal from '@/modules/inventory/components/QuickAddModal.vue'
 import CommandPalette from '@/app/components/CommandPalette.vue'
 import ScanModal from '@/modules/inventory/components/ScanModal.vue'

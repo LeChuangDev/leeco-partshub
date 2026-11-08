@@ -7,7 +7,7 @@ import http from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { handleApi } from '../../server/http/router.js'
-import { FileKV } from './file-kv.js'
+import { FileKV } from '../../server/infrastructure/kv/file-kv.js'
 import { DEV_TOKEN } from '../../server/http/auth.js'
 
 const PORT = Number(process.env.PORT) || 8787

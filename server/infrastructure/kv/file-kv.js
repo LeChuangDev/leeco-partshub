@@ -1,9 +1,10 @@
-// tools/dev-server/file-kv.js
-// 本地开发用 KV：在 MemoryKV 基础上把数据持久化到 JSON 文件。
-// 仅用于本地开发 / 验证，生产由真实 EdgeOne KV 取代。
+// server/infrastructure/kv/file-kv.js
+// 本地/桌面版 KV：在 MemoryKV 基础上把数据持久化到 JSON 文件。
+// 仅用于本地开发、验证与 Electron 离线版；生产由真实 EdgeOne KV 取代。
+// 注意：本文件依赖 node:fs，只允许 Node 端引用，不要从 kv/index.js 导出（避免打进边缘函数）。
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { MemoryKV } from '../../server/infrastructure/kv/index.js'
+import { MemoryKV } from './memory-kv.js'
 
 export class FileKV extends MemoryKV {
   constructor(file) {

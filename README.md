@@ -203,6 +203,28 @@ npm run build        # 产物 dist
 
 详细步骤见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
+## 离线桌面版（Electron）
+
+面向无网络或不想依赖 EdgeOne 的场景。应用内置本地服务，数据保存在本机，和线上 KV 完全隔离；两份数据通过「备份与设置」手动导出/恢复。
+
+```bash
+npm run offline:dev     # 构建离线前端并启动桌面版
+npm run offline:pack    # 生成 Windows 安装包 release/LeecoPartsHub-1.0.0-x64.exe
+npm run offline:dir     # 只生成免安装目录 release/win-unpacked
+```
+
+- 内置服务复用 `server/http/router.js` + `FileKV`，静态资源与 `/api` 都走 `127.0.0.1` 随机端口，不监听外网。
+- 数据目录：应用菜单「文件 → 打开数据目录」；Windows 默认在 `%APPDATA%\LeecoPartsHub\data\local-kv.json`。
+- 离线版无需令牌，启动自动进入；附件与备份不受 EdgeOne 1MB 请求体限制。
+- 安装包未配置代码签名，首次运行可能出现 SmartScreen 提示，选择「仍要运行」即可。
+
+国内网络打包前可先设置镜像：
+
+```powershell
+$env:ELECTRON_MIRROR='https://npmmirror.com/mirrors/electron/'
+$env:ELECTRON_BUILDER_BINARIES_MIRROR='https://npmmirror.com/mirrors/electron-builder-binaries/'
+```
+
 ## 文档
 
 | 文档 | 内容 |

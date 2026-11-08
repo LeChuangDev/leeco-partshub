@@ -42,8 +42,8 @@
         </div>
       </section>
 
-      <!-- 令牌 -->
-      <section class="card section">
+      <!-- 令牌（离线桌面版无需登录） -->
+      <section v-if="!IS_OFFLINE" class="card section">
         <div class="sec-icon" style="background: rgba(245,158,11,.14); color: var(--warning)">
           <AppIcon name="key" :size="19" />
         </div>
@@ -70,7 +70,7 @@
           <div class="sec-title">关于</div>
           <div class="sec-desc">
             {{ BRAND.name }} {{ BRAND.product }} · {{ BRAND.tagline }}<br />
-            架构：Vue 3 + Vite + Naive UI + Pinia ／ EdgeOne Serverless（边缘函数 + 边缘 KV）<br />
+            架构：Vue 3 + Vite + Naive UI + Pinia ／ {{ IS_OFFLINE ? 'Electron 离线桌面版（本地文件存储）' : 'EdgeOne Serverless（边缘函数 + 边缘 KV）' }}<br />
             当前版本范围：主数据 · 库存位置 · 订单导入 · 项目齐套 · 统计看板 · 操作日志
           </div>
           <div class="sec-actions">
@@ -116,6 +116,7 @@ import { useAuth } from '@/modules/auth/stores/auth'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import PageHeader from '@/shared/ui/PageHeader.vue'
 import { BRAND } from '@/shared/brand'
+import { IS_EDGE, IS_OFFLINE } from '@/shared/offline'
 import { emitDataChanged } from '@/shared/utils/events'
 
 const message = useMessage()
@@ -147,10 +148,10 @@ async function exportJson() {
 async function restore(o: any) {
   const file = o?.file?.file as File
   if (!file) return
-  // EdgeOne Edge Functions 请求体上限 1MB：线上把备份控制在 900KB 以内，本地仍允许 20MB
-  const limit = (import.meta.env.PROD ? 900 : 20 * 1024) * 1024
+  // EdgeOne Edge Functions 请求体上限 1MB：线上把备份控制在 900KB 以内；本地/离线版仍允许 20MB
+  const limit = (IS_EDGE ? 900 : 20 * 1024) * 1024
   if (file.size > limit) {
-    message.error(import.meta.env.PROD
+    message.error(IS_EDGE
       ? '备份文件超过 900KB：EdgeOne 单次请求上限 1MB，请改用不含附件的备份或拆分后恢复'
       : '备份文件超过 20MB，已拒绝')
     return

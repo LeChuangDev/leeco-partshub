@@ -107,6 +107,16 @@ Edge Functions 单次请求体上限 **1MB**、CPU 时间 200ms（I/O 不计）�
 
 可选：将 `dist` 上传至腾讯云 COS 私有桶，由 EdgeOne 回源加速，静态资源无需公开读。
 
+## 离线桌面版（Electron）
+
+- 架构：`electron/main.mjs` 启动 `electron/local-server.mjs`；本地服务复用 `server/http/router.js` 与 `server/infrastructure/kv/file-kv.js`，同时提供 `dist-offline` 静态资源和 `/api`，渲染进程访问 `127.0.0.1` 随机端口。
+- 构建：`npm run build:offline`（Vite `--mode offline`，读取 `.env.offline` 的 `VITE_OFFLINE=1`）。
+- 运行：`npm run offline:dev`；打包：`npm run offline:pack` → `release/LeecoPartsHub-<version>-x64.exe`；免安装目录：`npm run offline:dir`。
+- 数据：`FileKV` 写入 `app.getPath('userData')/data/local-kv.json`，应用菜单「文件 → 打开数据目录」可直接定位；与线上 EdgeOne KV 完全隔离。
+- 离线版不校验令牌（本地服务注入 `AUTH_DISABLED=1`），附件/备份/导入不受 EdgeOne 1MB 限制。
+- `release/`、`dist-offline/` 已加入 Vite watch ignore，避免 Windows 下打包产物被占用导致 dev server 退出。
+- 安装包未签名；首次运行如出现 SmartScreen，选择「仍要运行」。
+
 ## 配置项
 
 | 变量 | 作用 | 生产要求 |

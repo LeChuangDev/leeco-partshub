@@ -7,7 +7,7 @@
 
       <div v-if="devBypass" class="bypass">
         <AppIcon name="check" :size="18" />
-        <span>开发免密模式：本地服务已关闭令牌校验，可直接进入验证功能。</span>
+        <span>{{ IS_OFFLINE ? '离线桌面版：数据保存在本机，无需令牌。' : '开发免密模式：本地服务已关闭令牌校验，可直接进入验证功能。' }}</span>
       </div>
 
       <n-input
@@ -36,6 +36,7 @@ import { useAuth } from '@/modules/auth/stores/auth'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import BrandMark from '@/shared/ui/BrandMark.vue'
 import { BRAND } from '@/shared/brand'
+import { IS_OFFLINE } from '@/shared/offline'
 
 const router = useRouter()
 const route = useRoute()
