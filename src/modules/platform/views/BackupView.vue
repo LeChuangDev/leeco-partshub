@@ -147,7 +147,14 @@ async function exportJson() {
 async function restore(o: any) {
   const file = o?.file?.file as File
   if (!file) return
-  if (file.size > 20 * 1024 * 1024) { message.error('备份文件超过 20MB，已拒绝'); return }
+  // EdgeOne Edge Functions 请求体上限 1MB：线上把备份控制在 900KB 以内，本地仍允许 20MB
+  const limit = (import.meta.env.PROD ? 900 : 20 * 1024) * 1024
+  if (file.size > limit) {
+    message.error(import.meta.env.PROD
+      ? '备份文件超过 900KB：EdgeOne 单次请求上限 1MB，请改用不含附件的备份或拆分后恢复'
+      : '备份文件超过 20MB，已拒绝')
+    return
+  }
   loading.value = true
   try {
     const text = await file.text()

@@ -3,7 +3,7 @@
 // 与「BOM 齐套」页共用 bom.js 的解析与匹配能力，区别是项目 BOM 会持久化，
 // 并支持按「投产套数」换算总需求、跟踪项目状态与领料流水。
 
-import { kvGetJSON, kvPutJSON } from '../infrastructure/kv/index.js'
+import { kvGetJSON, kvPutJSON, KV_BATCH, mapLimit } from '../infrastructure/kv/index.js'
 import { listLocations } from '../repositories/location.repository.js'
 import { listPartsRaw } from '../repositories/part.repository.js'
 import { listStock } from '../repositories/stock.repository.js'
@@ -43,12 +43,10 @@ async function idxRemove(kv, key, id) {
 /* ------------------------------- 项目 CRUD ------------------------------- */
 export async function listProjects(kv) {
   const ids = await idxGet(kv, IDX)
-  const items = []
-  for (const id of ids) {
-    const p = await kvGetJSON(kv, `project:${id}`)
-    if (p) items.push(p)
-  }
-  return items.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+  const docs = await mapLimit(ids, KV_BATCH, (id) => kvGetJSON(kv, `project:${id}`))
+  return docs
+    .filter(Boolean)
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
 }
 
 export async function getProject(kv, id) {
@@ -261,9 +259,8 @@ export async function analyzeProject(kv, projectId, opts = {}) {
     ? Math.ceil(rawQty)
     : Math.max(1, Math.ceil(Number(project.buildQty) || 1))
 
-  const parts = await listPartsRaw(kv)
+  const [parts, locations] = await Promise.all([listPartsRaw(kv), listLocations(kv)])
   const byId = new Map(parts.map((p) => [p.id, p]))
-  const locations = await listLocations(kv)
   const locById = new Map(locations.map((l) => [l.id, l]))
   const pathOf = (id) => {
     const names = []
@@ -276,16 +273,9 @@ export async function analyzeProject(kv, projectId, opts = {}) {
     return names.join(' / ')
   }
 
-  // 批量读取库存
-  const stockMap = new Map()
-  const CHUNK = 24
+  // 批量读取库存：只读本项目实际引用的器件，有限并发
   const ids = [...new Set(lines.map((l) => l.partId).filter(Boolean))]
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const slice = ids.slice(i, i + CHUNK)
-    await Promise.all(slice.map(async (pid) => {
-      stockMap.set(pid, await listStock(kv, pid))
-    }))
-  }
+  const stockMap = new Map(await mapLimit(ids, KV_BATCH, async (pid) => [pid, await listStock(kv, pid)]))
   const qtyOf = (pid) => (stockMap.get(pid) || []).reduce((s, b) => s + (Number(b.quantity) || 0), 0)
 
   const out = lines.map((l) => {

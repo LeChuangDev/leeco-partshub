@@ -327,6 +327,8 @@ const typeOpts = [{ label: '文本', value: 'text' }, { label: '数字', value: 
 
 const hasFilter = computed(() => !!(search.value || expr.value || tag.value || selectedCat.value || quickFilter.value !== 'all'))
 const selectedCatName = computed(() => categories.value.find((c) => c.id === selectedCat.value)?.name || '')
+// 表格每行都会调用 catName，用 Map 取代逐行 find，避免行数 × 分类数的重复扫描
+const catNameMap = computed(() => new Map(categories.value.map((c) => [c.id, c.name])))
 const headerSub = computed(() => {
   const total = allParts.value.length
   if (!total) return '维护元器件主数据、参数模板与安全库存'
@@ -415,7 +417,7 @@ const columns = computed(() => {
     .map((c) => (c.key === 'op' ? { ...c, fixed: undefined } : c))
 })
 function catName(id: string | null) {
-  return categories.value.find((c) => c.id === id)?.name || '未分类'
+  return (id && catNameMap.value.get(id)) || '未分类'
 }
 function rowProps(r: any) {
   return {

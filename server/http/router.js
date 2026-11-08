@@ -43,7 +43,6 @@ export async function handleApi(request, env, url) {
 
   try {
     const kv = createKV(env)
-    await seedIfEmpty(kv)
 
     // 公开接口：仅鉴权状态查询
     if (path === '/auth/check' || path.startsWith('/auth/')) {
@@ -56,6 +55,9 @@ export async function handleApi(request, env, url) {
     const seg = path.split('/').filter(Boolean) // ['parts'] | ['parts','info','lcsc','C1']
     const handler = ROUTES[seg[0] || '']
     if (!handler) return json(404, {}, `Unknown route: ${path}`, 404)
+
+    // 鉴权与路由命中后才检查首次种子，避免 401 / 404 也付出一次 KV 读
+    await seedIfEmpty(kv)
 
     return await handler({ request, method, url, kv, seg, env })
   } catch (e) {

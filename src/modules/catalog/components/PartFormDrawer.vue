@@ -2,32 +2,49 @@
   <n-drawer :show="show" :width="520" placement="right" @update:show="(v: boolean) => $emit('update:show', v)">
     <n-drawer-content :title="part ? '编辑元器件' : '新建元器件'" :native-scrollbar="false">
       <n-form label-placement="top">
-        <n-form-item label="名称 *">
-          <n-input v-model:value="f.name" placeholder="如 0805 10kΩ 电阻" />
-        </n-form-item>
-        <n-grid :cols="2" :x-gap="12">
-          <n-form-item-gi label="内部编号"><n-input v-model:value="f.internalNo" placeholder="R-001（可选）" /></n-form-item-gi>
-          <n-form-item-gi label="分类">
+        <!-- 名称与分类放在同一行：分类决定参数模板，避免选完分类后页面跳动 -->
+        <div class="head-row">
+          <n-form-item label="名称 *" class="head-name" :show-feedback="false" style="margin-bottom: 8px">
+            <n-input v-model:value="f.name" placeholder="如 0805 10kΩ 电阻" />
+          </n-form-item>
+          <n-form-item label="分类" class="head-cat" :show-feedback="false" style="margin-bottom: 8px">
             <n-select v-model:value="f.categoryId" :options="catOptions" clearable placeholder="选择分类" @update:value="onCat" />
-          </n-form-item-gi>
-          <n-form-item-gi label="封装"><n-input v-model:value="f.package" placeholder="0805" /></n-form-item-gi>
-          <n-form-item-gi label="原厂型号"><n-input v-model:value="f.manufacturerModel" placeholder="RC0805FR" /></n-form-item-gi>
-        </n-grid>
-        <n-form-item label="品牌"><n-input v-model:value="f.brand" /></n-form-item>
-        <n-form-item label="功能描述"><n-input v-model:value="f.description" type="textarea" :rows="2" /></n-form-item>
+          </n-form-item>
+        </div>
 
-        <n-divider>电气参数</n-divider>
+        <!-- 名称里识别到规格（如 100nf / 10k）时，直接在输入框下方给出整规格快选 -->
+        <ParamComboPicker
+          v-if="template.length"
+          :template="template"
+          :params="f.params"
+          :query="nameQuery"
+          @apply="applyCombo"
+        />
+
+        <n-grid :cols="2" :x-gap="12">
+          <n-form-item-gi label="封装"><n-input v-model:value="f.package" placeholder="0805" /></n-form-item-gi>
+          <n-form-item-gi label="内部编号"><n-input v-model:value="f.internalNo" placeholder="R-001（可选）" /></n-form-item-gi>
+          <n-form-item-gi label="原厂型号"><n-input v-model:value="f.manufacturerModel" placeholder="RC0805FR" /></n-form-item-gi>
+          <n-form-item-gi label="品牌"><n-input v-model:value="f.brand" /></n-form-item-gi>
+        </n-grid>
+
+        <div class="block-title">电气参数<span class="hint">{{ template.length ? '按分类模板' : '选择分类后显示' }}</span></div>
         <div v-if="template.length" class="params">
           <n-grid :cols="2" :x-gap="12">
             <n-form-item-gi v-for="p in template" :key="p.key" :label="p.label + (p.unit ? ' (' + p.unit + ')' : '')">
               <n-select v-if="p.type === 'enum'" v-model:value="f.params[p.key]" :options="(p.options||[]).map((o:string)=>({label:o,value:o}))" clearable />
-              <n-input v-else v-model:value="f.params[p.key]" :placeholder="p.label" />
+              <ParamValueInput v-else v-model:value="f.params[p.key]" :param="p" />
             </n-form-item-gi>
           </n-grid>
         </div>
-        <n-empty v-else description="该分类暂无参数模板，可在分类管理中配置" size="small" />
+        <n-empty v-else-if="f.categoryId" description="该分类暂无参数模板，可在分类管理中配置" size="small" />
 
-        <n-divider>供应商料号</n-divider>
+        <div class="block-title mt-16">补充信息<span class="hint">选填</span></div>
+        <n-form-item label="功能描述"><n-input v-model:value="f.description" type="textarea" :rows="2" /></n-form-item>
+        <n-form-item label="标签"><n-dynamic-tags v-model:value="f.tags" /></n-form-item>
+        <n-form-item label="安全库存阈值"><n-input-number v-model:value="f.safetyStock" :min="0" /></n-form-item>
+
+        <div class="block-title mt-16">供应商料号</div>
         <div v-for="(s, i) in f.suppliers" :key="i" class="sup-row">
           <n-select v-model:value="s.platform" :options="platOptions" placeholder="平台" style="width: 120px" />
           <n-input v-model:value="s.sku" placeholder="料号" />
@@ -37,16 +54,11 @@
         </div>
         <n-button dashed block @click="f.suppliers.push({ platform: 'lcsc', sku: '', url: '', price: 0 })">+ 添加供应商</n-button>
 
-        <n-divider>标签与安全库存</n-divider>
-        <n-dynamic-tags v-model:value="f.tags" />
-        <n-form-item label="安全库存阈值" style="margin-top: 12px">
-          <n-input-number v-model:value="f.safetyStock" :min="0" />
-        </n-form-item>
-
-        <n-divider>附件（数据手册 / 图片）</n-divider>
+        <div class="block-title mt-16">附件（数据手册 / 图片）</div>
         <n-upload :default-upload="false" @change="onUpload">
           <n-button dashed block>+ 上传附件（转为 Base64 存储于 KV）</n-button>
         </n-upload>
+        <p v-if="isProd" class="att-tip">EdgeOne 单次请求上限 1MB：线上单文件 ≤ 300KB、单器件合计 ≤ 600KB，大文件建议存外链</p>
         <div v-if="f.attachments.length" class="att">
           <div v-for="a in f.attachments" :key="a.id" class="att-item">
             <span>{{ a.name }}</span>
@@ -69,15 +81,20 @@
 import { computed, h, ref, watch } from 'vue'
 import {
   NDrawer, NDrawerContent, NForm, NFormItem, NFormItemGi, NGrid, NInput, NSelect,
-  NInputNumber, NDivider, NDynamicTags, NButton, NUpload, NEmpty, NSpace, useMessage
+  NInputNumber, NDynamicTags, NButton, NUpload, NEmpty, NSpace, useMessage
 } from 'naive-ui'
 import { api } from '@/shared/api'
 import AppIcon from '@/shared/ui/AppIcon.vue'
+import ParamValueInput from '@/shared/ui/ParamValueInput.vue'
+import ParamComboPicker from '@/shared/ui/ParamComboPicker.vue'
+import { extractParamQuery } from '@server/domain/param-suggest.js'
 import type { Category, Part } from '@/shared/api/types'
 
 const props = defineProps<{ show: boolean; part: Part | null; categories: Category[] }>()
 const emit = defineEmits<{ (e: 'update:show', v: boolean): void; (e: 'done'): void }>()
 const message = useMessage()
+// 生产构建运行在 EdgeOne Edge Functions 上，请求体上限 1MB
+const isProd = import.meta.env.PROD
 
 const platOptions = [
   { label: '立创 LCSC', value: 'lcsc' },
@@ -93,6 +110,8 @@ const blank = () => ({
   brand: '', description: '', suppliers: [], params: {}, tags: [], safetyStock: 0, attachments: []
 })
 const f = ref<any>(blank())
+// 名称里可能已经写了规格（"0603 100nf 电容"），抽出来驱动快选
+const nameQuery = computed(() => extractParamQuery(f.value.name))
 
 watch(() => props.show, (v) => {
   if (!v) return
@@ -110,6 +129,10 @@ watch(() => props.show, (v) => {
   }
   syncTemplate()
 })
+
+function applyCombo(values: Record<string, string>) {
+  Object.assign(f.value.params, values)
+}
 
 function onCat() { syncTemplate() }
 function syncTemplate() {
@@ -142,12 +165,19 @@ async function save() {
 function onUpload(o: any) {
   const file = o?.file?.file as File
   if (!file) return
-  // 附件以 Base64 存在 KV 中，单文件 2MB / 单器件 6MB 上限，避免撑爆单条记录
-  const MAX_FILE = 2 * 1024 * 1024
-  const MAX_TOTAL = 6 * 1024 * 1024
-  if (file.size > MAX_FILE) { message.warning(`「${file.name}」超过 2MB，请改用外链或压缩后再上传`); return }
+  // 附件以 Base64 存在 KV：本地放宽到 2MB/6MB；
+  // 线上 Edge Functions 单次请求体上限 1MB，Base64 还会膨胀约 1/3，因此收紧到 300KB/600KB。
+  const MAX_FILE = (isProd ? 300 : 2048) * 1024
+  const MAX_TOTAL = (isProd ? 600 : 6144) * 1024
+  if (file.size > MAX_FILE) {
+    message.warning(`「${file.name}」超过 ${Math.round(MAX_FILE / 1024)}KB，请改用外链或压缩后再上传`)
+    return
+  }
   const used = f.value.attachments.reduce((sum: number, a: any) => sum + (Number(a.size) || 0), 0)
-  if (used + file.size > MAX_TOTAL) { message.warning('单个器件附件总量超过 6MB，请先移除部分附件'); return }
+  if (used + file.size > MAX_TOTAL) {
+    message.warning(`单个器件附件总量超过 ${Math.round(MAX_TOTAL / 1024)}KB，请先移除部分附件或改用外链`)
+    return
+  }
   const reader = new FileReader()
   reader.onload = () => {
     f.value.attachments.push({
@@ -163,8 +193,12 @@ function removeAtt(id: string) {
 </script>
 
 <style scoped>
+.head-row { display: flex; gap: 12px; align-items: flex-start; }
+.head-name { flex: 1; min-width: 0; }
+.head-cat { width: 170px; flex-shrink: 0; }
 .params { background: var(--surface-2); border-radius: 10px; padding: 12px; }
 .sup-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .att { margin-top: 10px; }
+.att-tip { margin: 6px 2px 0; font-size: 11px; line-height: 1.5; color: var(--text-3); }
 .att-item { display: flex; justify-content: space-between; padding: 6px 10px; background: var(--surface-2); border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
 </style>

@@ -291,6 +291,12 @@ async function onFile(o: any) {
 
 async function buildPlan() {
   const mapped = rawRows.value.map((r) => mapRow(platform.value, r))
+  if (import.meta.env.PROD && JSON.stringify(mapped).length > 900 * 1024) {
+    message.error('导入数据超过 900KB：EdgeOne 单次请求上限 1MB，请把表格拆分成多批导入')
+    items.value = []
+    summary.value = { match: 0, create: 0, skip: 0, similar: 0 }
+    return
+  }
   const plan: any = await api.importPlan(mapped)
   items.value = plan.items
   summary.value = plan.summary
@@ -326,6 +332,10 @@ async function doCommit() {
       locationId: it._loc || defaultLoc.value || null,
       action: checked.value.includes(it.index) ? it.action : 'skip'
     }))
+    if (import.meta.env.PROD && JSON.stringify(out).length > 900 * 1024) {
+      message.error('提交数据超过 900KB：EdgeOne 单次请求上限 1MB，请减少勾选行数后分批入库')
+      return
+    }
     const r: any = await api.importCommit(out)
     if (r.batchId) {
       lastBatchId.value = r.batchId

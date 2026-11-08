@@ -2,7 +2,7 @@
 // 元器件主数据聚合：CRUD、分类/标签索引同步、供应商料号与原厂型号匹配。
 // 库存数量不在此处计算——那是 stock 聚合的职责，由 application/catalog.service.js 组合。
 
-import { kvGetJSON, kvPutJSON } from '../infrastructure/kv/index.js'
+import { kvGetJSON, kvPutJSON, KV_BATCH, mapLimit } from '../infrastructure/kv/index.js'
 import { newPart, nowISO } from '../domain/models.js'
 import { normalizeParams, normalizePackage } from '../domain/normalize.js'
 import { idxAdd, idxGet, idxRemove, touchMeta } from './kv-index.js'
@@ -11,12 +11,8 @@ const INDEX = 'index:parts'
 
 export async function listPartsRaw(kv) {
   const ids = await idxGet(kv, INDEX)
-  const items = []
-  for (const id of ids) {
-    const p = await kvGetJSON(kv, `part:${id}`)
-    if (p) items.push(p)
-  }
-  return items
+  const docs = await mapLimit(ids, KV_BATCH, (id) => kvGetJSON(kv, `part:${id}`))
+  return docs.filter(Boolean)
 }
 
 export async function getPart(kv, id) {
@@ -83,13 +79,15 @@ export async function deletePart(kv, id) {
   return { ok: true, removedStock: stockIds.length }
 }
 
-export async function findPartBySupplier(kv, platform, sku) {
+/**
+ * 批量导入等场景会逐行调用匹配：调用方可先 listPartsRaw 一次并传入 parts，
+ * 避免每行都重新扫描整张主数据表。
+ */
+export async function findPartBySupplier(kv, platform, sku, parts = null) {
   if (!platform || !sku) return null
   const skuLower = String(sku).toLowerCase()
-  const ids = await idxGet(kv, INDEX)
-  for (const id of ids) {
-    const p = await kvGetJSON(kv, `part:${id}`)
-    if (!p) continue
+  const list = parts || (await listPartsRaw(kv))
+  for (const p of list) {
     const hit = (p.suppliers || []).some(
       (s) => String(s.platform).toLowerCase() === String(platform).toLowerCase() && String(s.sku).toLowerCase() === skuLower
     )
@@ -98,13 +96,12 @@ export async function findPartBySupplier(kv, platform, sku) {
   return null
 }
 
-export async function findPartByModelPackage(kv, model, pkg) {
+export async function findPartByModelPackage(kv, model, pkg, parts = null) {
   if (!model) return null
-  const ids = await idxGet(kv, INDEX)
-  for (const id of ids) {
-    const p = await kvGetJSON(kv, `part:${id}`)
-    if (!p) continue
-    const modelHit = String(p.manufacturerModel || '').toLowerCase() === String(model).toLowerCase()
+  const list = parts || (await listPartsRaw(kv))
+  const modelLower = String(model).toLowerCase()
+  for (const p of list) {
+    const modelHit = String(p.manufacturerModel || '').toLowerCase() === modelLower
     const pkgHit = !pkg || String(p.package || '').toLowerCase() === String(pkg).toLowerCase()
     if (modelHit && pkgHit) return p
   }

@@ -1,7 +1,8 @@
 // tests/unit/run.mjs
 // 后端逻辑单元测试：用 MemoryKV 真实调用仓储与用例，覆盖核心业务与边界。
 // 运行：npm run test:unit
-import { MemoryKV } from '../../server/infrastructure/kv/index.js'
+import { MemoryKV, EdgeOneKV } from '../../server/infrastructure/kv/index.js'
+import { checkAuth } from '../../server/http/auth.js'
 import { seedIfEmpty } from '../../server/infrastructure/seed.js'
 import { DEFAULT_CATEGORIES } from '../../server/domain/models.js'
 import { listParts } from '../../server/application/catalog.service.js'
@@ -13,7 +14,7 @@ import { moveStock as moveStockWithAudit } from '../../server/application/invent
 import { summarizeBom, METRIC_LABELS } from '../../server/domain/bom/summary.js'
 import { buildParamTemplate } from '../../server/domain/param-template.js'
 import { getStats } from '../../server/application/analytics.service.js'
-import { listCategories } from '../../server/repositories/category.repository.js'
+import { listCategories, updateCategory } from '../../server/repositories/category.repository.js'
 import { createPart, deletePart, getPart } from '../../server/repositories/part.repository.js'
 import { createLocation } from '../../server/repositories/location.repository.js'
 import { listStock, moveStock, partTotalQuantity } from '../../server/repositories/stock.repository.js'
@@ -29,6 +30,7 @@ import { BRAND_TITLE, LEGACY_BRAND_TITLES } from '../../server/domain/brand.js'
 import { parseScanPayload } from '../../server/domain/scan.js'
 import { mapRow, detectPlatform } from '../../server/domain/import-map.js'
 import { normalizePackage, parseSI, formatSI, eiaCode } from '../../server/domain/normalize.js'
+import { suggestParamValues, suggestParamCombos, describeParamValue, extractParamQuery } from '../../server/domain/param-suggest.js'
 
 // 统计分类树总节点数（顶级 + 嵌套子级），避免断言随模板增减而过期。
 function countTree(nodes) {
@@ -507,6 +509,148 @@ async function main() {
   ok('失败后库存回滚到 12', await partTotalQuantity(failing, pKeep.id) === 12)
   ok('失败后器件记录仍在', Boolean(await getPart(failing, pKeep.id)))
   ok('回滚写入未被失败键阻断', failing.failOnce === false)
+
+  console.log('\n[18] 参数取值建议')
+  const R = { key: 'resistance', label: '阻值', unit: 'Ω' }
+  const C = { key: 'capacitance', label: '容值', unit: 'F' }
+  ok('输入 10k 首选 10kΩ', suggestParamValues(R, '10k')[0] === '10kΩ')
+  ok('输入 10k 不乱命中 110kΩ', !suggestParamValues(R, '10k', 8).includes('110kΩ'))
+  ok('输入 4R7 首选 4.7Ω', suggestParamValues(R, '4R7')[0] === '4.7Ω')
+  ok('输入 103 按 EIA 解释为 10kΩ', describeParamValue(R, '103').includes('= 10kΩ'))
+  ok('输入 220 按字面值解释为 220Ω', suggestParamValues(R, '220')[0] === '220Ω')
+  ok('电容输入 100n 首选 100nF', suggestParamValues(C, '100n')[0] === '100nF')
+  ok('电容输入 104 按 EIA 解释为 100nF', describeParamValue(C, '104').includes('100nF'))
+  ok('电压输入 3.3 首选 3.3V', suggestParamValues({ key: 'voltage', label: '耐压', unit: 'V' }, '3.3')[0] === '3.3V')
+  ok('精度建议首选 ±1%', suggestParamValues({ key: 'tolerance', label: '精度' }, '1')[0] === '±1%')
+  ok('封装建议含 0603', suggestParamValues({ key: 'package', label: '封装' }, '060').includes('0603'))
+  ok('空输入给出常用值', suggestParamValues(R, '').includes('10kΩ'))
+
+  console.log('\n[19] 整器件规格快选')
+  const R_TPL = [
+    { key: 'resistance', label: '阻值', type: 'text', unit: 'Ω' },
+    { key: 'power', label: '功率', type: 'text', unit: 'W' },
+    { key: 'tolerance', label: '精度', type: 'enum', options: ['±0.1%', '±0.5%', '±1%', '±5%'] }
+  ]
+  const comboR = suggestParamCombos(R_TPL, { resistance: '10k' })
+  ok('电阻输入 10k 生成整规格组合', comboR.length > 0 && comboR[0].label.startsWith('10kΩ'), comboR[0]?.label)
+  ok('电阻组合同时填入精度与功耗', comboR[0].values.tolerance === '±1%' && comboR[0].values.power === '1/4W', JSON.stringify(comboR[0]?.values))
+  const C_TPL = [
+    { key: 'capacitance', label: '容值', type: 'text', unit: 'F' },
+    { key: 'voltage', label: '耐压', type: 'text', unit: 'V' },
+    { key: 'tolerance', label: '精度', type: 'enum', options: ['±1%', '±5%', '±10%', '±20%'] },
+    { key: 'material', label: '材质', type: 'enum', options: ['陶瓷', '电解'] }
+  ]
+  const comboC = suggestParamCombos(C_TPL, { capacitance: '100n' })
+  ok('电容组合含容值+耐压+精度', comboC[0]?.label.includes('100nF') && comboC[0]?.label.includes('50V') && comboC[0]?.label.includes('%'), comboC[0]?.label)
+  ok('电容组合不写入材质字段', !('material' in (comboC[0]?.values || {})))
+  ok('无主参数模板不生成组合', suggestParamCombos([{ key: 'spec', label: '规格', type: 'text' }], {}).length === 0)
+  ok('从名称提取 10kΩ', extractParamQuery('0805 10kΩ 电阻') === '10kΩ')
+  ok('从名称提取 100nf', extractParamQuery('0603 100nf 电容') === '100nf')
+  ok('型号串不误提取规格', extractParamQuery('STM32F103C8T6') === '')
+  const comboByName = suggestParamCombos(C_TPL, {}, 10, extractParamQuery('0603 100nf 电容'))
+  ok('名称里写 100nf 也能生成电容组合', comboByName[0]?.label.includes('100nF'), comboByName[0]?.label)
+
+  console.log('\n[20] 内置模板升级')
+  const kvUp = new MemoryKV()
+  await seedIfEmpty(kvUp)
+  const capUp = (await listCategories(kvUp)).find((c) => c.name === '电容')
+  await updateCategory(kvUp, capUp.id, {
+    paramTemplate: capUp.paramTemplate.filter((p) => p.key !== 'tolerance')
+  })
+  const metaUp = JSON.parse(await kvUp.get('meta:info'))
+  delete metaUp.templateVersion
+  await kvUp.put('meta:info', JSON.stringify(metaUp))
+  await seedIfEmpty(kvUp)
+  const capUp2 = (await listCategories(kvUp)).find((c) => c.name === '电容')
+  ok('旧数据自动补齐电容精度字段', capUp2.paramTemplate.some((p) => p.key === 'tolerance'))
+
+  console.log('\n[21] EdgeOne KV 适配器')
+  // 模拟 EdgeOne 绑定：key 仅允许字母/数字/下划线，list 单页上限 256 且返回 { key } 结构
+  class FakeEdgeBinding {
+    constructor() { this.map = new Map() }
+    check(key) {
+      if (!/^[A-Za-z0-9_]+$/.test(key)) throw new Error('非法 KV key: ' + key)
+    }
+    async get(key) { this.check(key); return this.map.get(key) ?? null }
+    async put(key, value) { this.check(key); this.map.set(key, value) }
+    async delete(key) { this.check(key); this.map.delete(key) }
+    async list({ prefix = '', limit = 256, cursor } = {}) {
+      this.check(prefix)
+      if (limit > 256) throw new Error('limit 超过 EdgeOne 上限')
+      const all = [...this.map.keys()].filter((k) => k.startsWith(prefix)).sort()
+      const start = cursor ? all.indexOf(cursor) : 0
+      const page = all.slice(start, start + limit)
+      const end = start + page.length
+      return {
+        keys: page.map((k) => ({ key: k })),
+        cursor: end < all.length ? all[end] : null,
+        complete: end >= all.length
+      }
+    }
+  }
+  const edgeKV = new EdgeOneKV(new FakeEdgeBinding())
+  await edgeKV.put('part:p1', 'R1')
+  ok('业务 key 被编码为合法字符', [...edgeKV.kv.map.keys()].every((k) => /^[A-Za-z0-9_]+$/.test(k)))
+  ok('读回业务数据', await edgeKV.get('part:p1') === 'R1')
+  ok('列表还原为业务 key', (await edgeKV.list('part:')).keys.join(',') === 'part:p1')
+  await edgeKV.put('index:parts:tag:贴片 电阻', '["p1"]')
+  ok('中文/空格标签 key 可写入并前缀检索',
+    (await edgeKV.list('index:parts:tag:')).keys.includes('index:parts:tag:贴片 电阻'))
+  // 批量超过 256 条，适配器应自动分页并用业务 key 返回
+  for (let i = 0; i < 300; i++) await edgeKV.put(`txn:${String(i).padStart(4, '0')}`, 'x')
+  const many = await edgeKV.list('txn:', { limit: 1000 })
+  ok('list 自动限制到 256 并分页', many.keys.length === 256 && many.done === false, `实际 ${many.keys.length}`)
+  const allTxn = []
+  let cursor = null
+  let guard = 0
+  do {
+    const page = await edgeKV.list('txn:', { limit: 1000, cursor })
+    allTxn.push(...page.keys)
+    cursor = page.cursor
+    guard++
+  } while (cursor && guard < 10)
+  ok('分页遍历拿到全部 300 条', allTxn.length === 300 && new Set(allTxn).size === 300, `实际 ${allTxn.length}`)
+  await edgeKV.del('part:p1')
+  ok('删除后读不到', await edgeKV.get('part:p1') === null)
+
+  console.log('\n[22] 生产鉴权 fail-closed')
+  const noToken = new Request('https://example.com/api/meta')
+  const goodToken = new Request('https://example.com/api/meta', { headers: { 'X-Auth-Token': 'secret' } })
+  const badToken = new Request('https://example.com/api/meta', { headers: { 'X-Auth-Token': 'wrong' } })
+  ok('绑定 KV 但漏配 AUTH_TOKEN 时拒绝', checkAuth(noToken, { KV: {} }).ok === false)
+  ok('绑定 KV 且令牌正确时放行', checkAuth(goodToken, { KV: {}, AUTH_TOKEN: 'secret' }).ok === true)
+  ok('绑定 KV 且令牌错误时拒绝', checkAuth(badToken, { KV: {}, AUTH_TOKEN: 'secret' }).ok === false)
+  ok('本地无 KV 时保持免密', checkAuth(noToken, { memory: true }).ok === true)
+  ok('AUTH_DISABLED 仍可开发免密', checkAuth(noToken, { KV: {}, AUTH_DISABLED: '1' }).ok === true)
+
+  console.log('\n[23] EdgeOne 入口连通性')
+  const { default: edgeOnRequest } = await import('../../edge-functions/api/[[default]].js')
+  const edgeEntryRes = await edgeOnRequest({
+    request: new Request('https://example.com/api/meta', { headers: { 'X-Auth-Token': 'secret' } }),
+    env: { KV: new FakeEdgeBinding(), AUTH_TOKEN: 'secret' }
+  })
+  const edgeEntryBody = await edgeEntryRes.json()
+  ok('入口默认导出 onRequest 并复用统一路由', edgeEntryRes.status === 200 && edgeEntryBody.code === 0, JSON.stringify(edgeEntryBody))
+  ok('首次请求经适配器完成默认分类种子', Number(edgeEntryBody.data?.templateVersion) >= 2, JSON.stringify(edgeEntryBody.data))
+  const edgeUnauth = await edgeOnRequest({
+    request: new Request('https://example.com/api/meta'),
+    env: { KV: new FakeEdgeBinding(), AUTH_TOKEN: 'secret' }
+  })
+  ok('缺少令牌返回 401', edgeUnauth.status === 401)
+  // EdgeOne 官方示例把 KV 绑定当全局变量用，这里验证全局注入路径
+  globalThis.KV = new FakeEdgeBinding()
+  const edgeGlobal = await edgeOnRequest({
+    request: new Request('https://example.com/api/meta', { headers: { 'X-Auth-Token': 'secret' } }),
+    env: { AUTH_TOKEN: 'secret' }
+  })
+  ok('全局 KV 绑定可用', edgeGlobal.status === 200)
+  delete globalThis.KV
+  const edgeNoKV = await edgeOnRequest({
+    request: new Request('https://example.com/api/meta', { headers: { 'X-Auth-Token': 'secret' } }),
+    env: { AUTH_TOKEN: 'secret' }
+  })
+  const edgeNoKVBody = await edgeNoKV.json()
+  ok('缺少 KV 绑定时明确报错', edgeNoKV.status === 500 && String(edgeNoKVBody.msg).includes('KV'))
 
   console.log(`\n========== 结果: ${passed} 通过, ${failed} 失败 ==========`)
   process.exit(failed === 0 ? 0 : 1)

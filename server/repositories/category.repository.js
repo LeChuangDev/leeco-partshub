@@ -2,7 +2,7 @@
 // 分类聚合：树形分类的持久化与层级查询。业务规则（删除前校验、子级上移）留在这里，
 // 保证任何入口（HTTP、导入、脚本）走同一套约束。
 
-import { kvGetJSON, kvPutJSON } from '../infrastructure/kv/index.js'
+import { kvGetJSON, kvPutJSON, KV_BATCH, mapLimit } from '../infrastructure/kv/index.js'
 import { newCategory, nowISO } from '../domain/models.js'
 import { idxAdd, idxGet, idxRemove, touchMeta } from './kv-index.js'
 
@@ -10,11 +10,8 @@ const INDEX = 'index:categories'
 
 export async function listCategories(kv) {
   const ids = await idxGet(kv, INDEX)
-  const items = []
-  for (const id of ids) {
-    const c = await kvGetJSON(kv, `category:${id}`)
-    if (c) items.push(c)
-  }
+  const docs = await mapLimit(ids, KV_BATCH, (id) => kvGetJSON(kv, `category:${id}`))
+  const items = docs.filter(Boolean)
   items.sort((a, b) => (a.order || 0) - (b.order || 0))
   return items
 }

@@ -188,15 +188,16 @@ docs/             架构、开发、接口、验证报告与 ADR
 npm run build        # 产物 dist
 ```
 
-1. 构建命令 `npm run build`，产物目录 `dist`，边缘函数目录 `functions`（catch-all 入口 `functions/api/[...path].js`）。
-2. 创建边缘 KV 命名空间 `leeco-partshub`，绑定到函数环境变量 `KV`。
-3. 配置强随机 `AUTH_TOKEN`；生产环境**不要**设置 `AUTH_DISABLED`。
-4. 首次访问任意接口会写入默认分类；可用「备份与设置」导出本地数据后在线恢复。
+1. `edgeone.json` 已声明构建命令 `npm run build`、产物目录 `dist`、Node 版本 `22.11.0` 与静态资源缓存头。
+2. 边缘函数入口 `edge-functions/api/[[default]].js`（`/api` 下多级 catch-all，默认导出 `onRequest`）。
+3. 创建边缘 KV 命名空间 `leeco-partshub`，绑定为 Edge Functions 环境变量 `KV`；适配器会自动编码含 `:` / 中文的 key。
+4. 配置强随机 `AUTH_TOKEN`。绑定 KV 后若漏配令牌会被直接拒绝（fail-closed），生产环境**不要**设置 `AUTH_DISABLED`。
+5. 首次访问任意接口会写入默认分类；可用「备份与设置」导出本地数据后在线恢复。Edge Functions 单次请求体上限 **1MB**，附件与备份文件过大时请拆分或改用外链。
 
 | 变量 | 作用 | 生产要求 |
 | --- | --- | --- |
 | `AUTH_TOKEN` | 接口令牌，前端登录时输入相同值 | 必填，勿提交到仓库 |
-| `KV` | EdgeOne 边缘 KV 绑定 | 由控制台注入 |
+| `KV` | EdgeOne 边缘 KV 绑定（全局变量或 `env.KV`） | 由控制台注入 |
 | `AUTH_DISABLED` | `1` 时跳过鉴权 | 禁止设置 |
 | `KV_FILE` / `PORT` | 本地 FileKV 路径与端口 | 仅本地使用 |
 

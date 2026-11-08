@@ -30,9 +30,12 @@
           <div class="r-meta">{{ p.manufacturerModel || '—' }} · {{ p.package || '—' }} · 库存 {{ p.totalQuantity ?? 0 }}</div>
         </div>
       </div>
-      <n-divider>或</n-divider>
+      <n-divider>或 新建元器件</n-divider>
       <n-space vertical>
         <n-input v-model:value="newName" placeholder="新建元器件名称，如 0603 10kΩ 电阻" />
+        <!-- 名称里识别到规格（如 100nf / 10k）时，直接紧贴名称给出整规格快选 -->
+        <ParamComboPicker :template="quickTemplate" :params="newParams" :query="nameQuery" @apply="applyCombo" />
+        <!-- 分类与封装决定参数模板，放在快选条之后 -->
         <n-space>
           <n-select v-model:value="newCat" :options="catOptions" placeholder="分类" style="width: 200px" clearable @update:value="onNewCat" />
           <n-input v-model:value="newPkg" placeholder="封装 0603" style="width: 140px" />
@@ -41,18 +44,17 @@
         <div v-if="newTemplate.length" class="new-params">
           <div class="np-title">电气参数</div>
           <n-grid :cols="2" :x-gap="10" :y-gap="10">
-            <n-form-item-gi v-for="p in newTemplate.slice(0, 4)" :key="p.key" :label="p.label + (p.unit ? ' (' + p.unit + ')' : '')" :show-feedback="false">
+            <n-form-item-gi v-for="p in quickTemplate" :key="p.key" :label="p.label + (p.unit ? ' (' + p.unit + ')' : '')" :show-feedback="false">
               <n-select
                 v-if="p.type === 'enum'"
                 v-model:value="newParams[p.key]"
                 :options="(p.options || []).map((o: string) => ({ label: o, value: o }))"
                 clearable placeholder="选择"
               />
-              <n-input v-else v-model:value="newParams[p.key]" :placeholder="p.label" />
+              <ParamValueInput v-else v-model:value="newParams[p.key]" :param="p" />
             </n-form-item-gi>
           </n-grid>
         </div>
-        <n-button tertiary block @click="useNew">使用新建的元器件</n-button>
       </n-space>
     </div>
 
@@ -101,7 +103,7 @@
     <template #footer>
       <n-space justify="end">
         <n-button v-if="step > 1" @click="step--">上一步</n-button>
-        <n-button v-if="step < 3" type="primary" :disabled="!canNext" @click="step++">下一步</n-button>
+        <n-button v-if="step < 3" type="primary" :disabled="!canNext" @click="next">下一步</n-button>
         <n-button v-else type="primary" :loading="loading" @click="confirm">确认入库</n-button>
       </n-space>
     </template>
@@ -115,6 +117,9 @@ import {
   NInputNumber, NDescriptions, NDescriptionsItem, NGrid, NFormItemGi, useMessage
 } from 'naive-ui'
 import AppIcon from '@/shared/ui/AppIcon.vue'
+import ParamValueInput from '@/shared/ui/ParamValueInput.vue'
+import ParamComboPicker from '@/shared/ui/ParamComboPicker.vue'
+import { extractParamQuery } from '@server/domain/param-suggest.js'
 import { api } from '@/shared/api'
 import { emitDataChanged } from '@/shared/utils/events'
 import type { Category, Location, Part } from '@/shared/api/types'
@@ -149,7 +154,10 @@ const unitOptions = ['个', '米', '克', '卷', '片'].map((u) => ({ label: u, 
 const supplierOptions = ['立创', '贸泽', '得捷', '淘宝/1688', '自备库存', '其他'].map((s) => ({ label: s, value: s }))
 
 const newTemplate = computed(() => categories.value.find((c) => c.id === newCat.value)?.paramTemplate || [])
-const canNext = computed(() => (step.value === 1 ? !!selPart.value : true))
+// 快速入库只展示前 4 个核心参数，规格快选同样只覆盖可见字段
+const quickTemplate = computed(() => newTemplate.value.slice(0, 4))
+const nameQuery = computed(() => extractParamQuery(newName.value))
+const canNext = computed(() => (step.value === 1 ? (!!selPart.value || !!newName.value.trim()) : true))
 const partLabel = computed(() => (selPart.value ? selPart.value.name : `${newName.value}${newPkg.value ? ' · ' + newPkg.value : ''}`))
 const locName = computed(() => locations.value.find((l) => l.id === locId.value)?.name || '未指定')
 const specLabel = computed(() => {
@@ -182,6 +190,10 @@ function onNewCat() {
   newParams.value = {}
 }
 
+function applyCombo(values: Record<string, string>) {
+  Object.assign(newParams.value, values)
+}
+
 let timer: any = null
 function onSearch() {
   clearTimeout(timer)
@@ -198,6 +210,12 @@ function useNew() {
     id: '__new__', name: newName.value, package: newPkg.value,
     categoryId: newCat.value, params: { ...newParams.value }
   } as any
+}
+
+// 名称已填但没点「使用新建的元器件」时，下一步直接采用新器件，少一次点击
+function next() {
+  if (step.value === 1 && !selPart.value) useNew()
+  step.value++
 }
 
 async function confirm() {

@@ -2,18 +2,15 @@
 // 库存批次聚合：批次持久化、按元器件汇总、位置迁移。
 // 出入库属于跨聚合用例（批次 + 流水 + 主数据回写），放在 application/stock.service.js。
 
-import { kvGetJSON, kvPutJSON } from '../infrastructure/kv/index.js'
+import { kvGetJSON, kvPutJSON, KV_BATCH, mapLimit } from '../infrastructure/kv/index.js'
 import { newStock, nowISO } from '../domain/models.js'
 import { idxAdd, idxGet, touchMeta } from './kv-index.js'
 import { getPart } from './part.repository.js'
 
 export async function listStock(kv, partId) {
   const ids = await idxGet(kv, `index:stock:part:${partId}`)
-  const items = []
-  for (const id of ids) {
-    const s = await kvGetJSON(kv, `stock:${id}`)
-    if (s) items.push(s)
-  }
+  const docs = await mapLimit(ids, KV_BATCH, (id) => kvGetJSON(kv, `stock:${id}`))
+  const items = docs.filter(Boolean)
   items.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
   return items
 }
@@ -21,12 +18,8 @@ export async function listStock(kv, partId) {
 /** 统计用全量批次；个人规模下逐条读取可接受，超大库应改为维护总索引 */
 export async function getAllStock(kv) {
   const ids = await idxGet(kv, 'index:stock:part:__all__').catch(() => [])
-  const items = []
-  for (const id of ids) {
-    const s = await kvGetJSON(kv, `stock:${id}`)
-    if (s) items.push(s)
-  }
-  return items
+  const docs = await mapLimit(ids, KV_BATCH, (id) => kvGetJSON(kv, `stock:${id}`))
+  return docs.filter(Boolean)
 }
 
 export async function createStock(kv, input) {

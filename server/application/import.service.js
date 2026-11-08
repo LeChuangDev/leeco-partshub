@@ -2,7 +2,7 @@
 // 服务器端导入逻辑：根据归一化行做多级去重匹配，生成导入计划（预览），再提交写入。
 // 匹配优先级：① 平台料号精确 → ② 原厂型号 + 封装 → ③ 参数 + 封装（疑似重复，提示用户确认）
 
-import { kvGetJSON, kvPutJSON } from '../infrastructure/kv/index.js'
+import { kvGetJSON, kvPutJSON, KV_BATCH, mapLimit } from '../infrastructure/kv/index.js'
 import { nowISO, uid } from '../domain/models.js'
 import { listCategories } from '../repositories/category.repository.js'
 import {
@@ -33,14 +33,14 @@ function normalizeRow(r) {
 }
 
 // 第三级：参数 + 封装模糊匹配，只提示、不自动合并
-async function findSimilarPart(kv, row) {
+async function findSimilarPart(kv, row, all = null) {
   const pkg = normalizePackage(row.package)
   const params = row.params || {}
   const keys = Object.keys(params).filter((k) => familyOfKey(k) && params[k])
   if (!pkg || !keys.length) return null
-  const all = await listPartsRaw(kv)
+  const candidates = all || (await listPartsRaw(kv))
   let best = null
-  for (const cand of all) {
+  for (const cand of candidates) {
     if (normalizePackage(cand.package) !== pkg) continue
     const candParams = cand.params || {}
     let hit = 0
@@ -71,7 +71,8 @@ async function findSimilarPart(kv, row) {
 // 生成导入计划（dryRun，不落库）
 export async function planImport(kv, rows) {
   const items = []
-  const cats = await listCategories(kv)
+  // 器件主数据只加载一次，供每一行复用；否则逐行三级匹配会反复全表扫描
+  const [cats, allParts] = await Promise.all([listCategories(kv), listPartsRaw(kv)])
   const catByName = new Map(cats.map((c) => [c.name, c.id]))
   for (let i = 0; i < rows.length; i++) {
     const r = normalizeRow(rows[i])
@@ -81,14 +82,14 @@ export async function planImport(kv, rows) {
     }
     let matched = null
     let matchedBy = ''
-    if (r.platform && r.sku) { matched = await findPartBySupplier(kv, r.platform, r.sku); if (matched) matchedBy = '料号' }
+    if (r.platform && r.sku) { matched = await findPartBySupplier(kv, r.platform, r.sku, allParts); if (matched) matchedBy = '料号' }
     if (!matched && r.manufacturerModel) {
-      matched = await findPartByModelPackage(kv, r.manufacturerModel, normalizePackage(r.package))
+      matched = await findPartByModelPackage(kv, r.manufacturerModel, normalizePackage(r.package), allParts)
       if (matched) matchedBy = '型号+封装'
     }
 
     // 第三级仅在「不匹配任何现有料」时作为风险提示，不自动合并
-    const similar = matched ? null : await findSimilarPart(kv, r)
+    const similar = matched ? null : await findSimilarPart(kv, r, allParts)
     const categoryId = r.categoryId || catByName.get(r.categoryName) || null
 
     if (matched) {
@@ -203,11 +204,11 @@ export const UNDO_WINDOW_MS = 10 * 60 * 1000
 /** 列出最近的导入批次，供前端展示「撤销本次导入」 */
 export async function listImportBatches(kv, limit = 20) {
   const ids = await idxGet(kv, 'index:importbatches')
-  const out = []
-  for (const id of ids.slice(-Math.min(limit, 100))) {
-    const doc = await kvGetJSON(kv, `importbatch:${id}`)
-    if (doc) out.push({ ...doc, undoable: !doc.undone && Date.now() - new Date(doc.createdAt).getTime() <= UNDO_WINDOW_MS })
-  }
+  const tail = ids.slice(-Math.min(limit, 100))
+  const docs = await mapLimit(tail, KV_BATCH, (id) => kvGetJSON(kv, `importbatch:${id}`))
+  const out = docs
+    .filter(Boolean)
+    .map((doc) => ({ ...doc, undoable: !doc.undone && Date.now() - new Date(doc.createdAt).getTime() <= UNDO_WINDOW_MS }))
   return out.reverse()
 }
 

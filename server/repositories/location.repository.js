@@ -1,7 +1,7 @@
 // server/repositories/location.repository.js
 // 存储位置聚合：树形位置的持久化。删除位置时子位置上移，不级联删除库存批次。
 
-import { kvGetJSON, kvPutJSON } from '../infrastructure/kv/index.js'
+import { kvGetJSON, kvPutJSON, KV_BATCH, mapLimit } from '../infrastructure/kv/index.js'
 import { newLocation, nowISO } from '../domain/models.js'
 import { idxAdd, idxGet, idxRemove, touchMeta } from './kv-index.js'
 
@@ -9,12 +9,8 @@ const INDEX = 'index:locations'
 
 export async function listLocations(kv) {
   const ids = await idxGet(kv, INDEX)
-  const items = []
-  for (const id of ids) {
-    const l = await kvGetJSON(kv, `location:${id}`)
-    if (l) items.push(l)
-  }
-  return items
+  const docs = await mapLimit(ids, KV_BATCH, (id) => kvGetJSON(kv, `location:${id}`))
+  return docs.filter(Boolean)
 }
 
 export async function createLocation(kv, input) {

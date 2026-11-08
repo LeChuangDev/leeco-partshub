@@ -27,6 +27,7 @@ export const DEFAULT_CATEGORIES = [
     paramTemplate: [
       { key: 'capacitance', label: '容值', type: 'text', unit: 'F' },
       { key: 'voltage', label: '耐压', type: 'text', unit: 'V' },
+      { key: 'tolerance', label: '精度', type: 'enum', options: ['±0.1%', '±0.5%', '±1%', '±5%', '±10%', '±20%'] },
       { key: 'material', label: '材质', type: 'enum', options: ['陶瓷', '电解', '钽', '薄膜'] }
     ]
   },

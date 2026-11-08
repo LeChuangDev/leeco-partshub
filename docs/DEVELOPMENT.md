@@ -85,11 +85,25 @@ node tests/e2e/ui-report-improvements.mjs          # 品牌标记、操作日志
 
 ## 部署到 EdgeOne Pages
 
-1. 推送仓库并在 EdgeOne Pages 创建项目，构建命令 `npm run build`，产物目录 `dist`。
-2. 边缘函数目录为 `functions`，入口 `functions/api/[...path].js`（catch-all）。
-3. 创建边缘 KV 命名空间 `leeco-partshub`，绑定到函数环境变量 `KV`。
-4. 配置环境变量 `AUTH_TOKEN`（强随机值，切勿提交到仓库）；不要配置 `AUTH_DISABLED`。
+1. 推送仓库并在 EdgeOne Pages 创建项目；`edgeone.json` 已声明构建命令 `npm run build`、产物目录 `dist`、Node `22.11.0`。
+2. 边缘函数入口为 `edge-functions/api/[[default]].js`（`/api` 下多级 catch-all，默认导出 `onRequest`），EdgeOne 按 `edge-functions` 目录生成路由。
+3. 创建边缘 KV 命名空间 `leeco-partshub`，绑定为 Edge Functions 变量 `KV`。EdgeOne KV 的 key 只允许字母/数字/下划线，适配器会把业务 key（含 `:` 与中文标签）编码为十六进制，`list` 自动按单页 256 条分页。
+4. 配置环境变量 `AUTH_TOKEN`（强随机值，切勿提交到仓库）；不要配置 `AUTH_DISABLED`。安全默认：绑定了 `env.KV` 但漏配 `AUTH_TOKEN` 时接口直接返回 401，避免线上裸奔。
 5. 首次访问任意接口会写入默认分类；如需迁移本地数据，可在「备份与设置」导出后于线上恢复。
+
+### 线上限制与自检
+
+Edge Functions 单次请求体上限 **1MB**、CPU 时间 200ms（I/O 不计）。前端已做对应保护：
+
+| 入口 | 线上限制 | 行为 |
+| --- | --- | --- |
+| 器件附件 | 单文件 300KB、单器件合计 600KB | 超限时提示改用外链；`npm run dev` 下仍为 2MB / 6MB |
+| 备份恢复 | 900KB | 超限时提示拆分或使用不含附件的备份 |
+| 导入预览 / 提交 | 约 900KB | 超限时提示拆分成多批 |
+
+部署前运行 `npm run check`（路径自检 + 类型检查 + 单测 + API 契约 + 构建）。`dist` 使用 Hash 路由，无需配置 SPA 回退重写。
+
+> EdgeOne KV 为最终一致存储（约 60s 全球同步），单用户低并发场景可接受；多端同时写同一索引时可能短暂读到旧值，批量导入后建议稍等再刷新。
 
 可选：将 `dist` 上传至腾讯云 COS 私有桶，由 EdgeOne 回源加速，静态资源无需公开读。
 
@@ -99,7 +113,7 @@ node tests/e2e/ui-report-improvements.mjs          # 品牌标记、操作日志
 | --- | --- | --- |
 | `AUTH_TOKEN` | 接口令牌，前端登录时输入相同值 | 必填，勿提交到仓库 |
 | `AUTH_DISABLED` | `1` 时跳过鉴权 | **禁止**设置 |
-| `KV` | EdgeOne 边缘 KV 绑定 | 由控制台注入 |
+| `KV` | EdgeOne 边缘 KV 绑定（全局变量或 `env.KV`） | 由控制台注入 |
 | `KV_FILE` | 本地 FileKV 路径（默认 `.data/local-kv.json`） | 仅本地 |
 | `PORT` | 本地 API 端口（默认 `8787`） | 仅本地，用于并行隔离实例 |
 

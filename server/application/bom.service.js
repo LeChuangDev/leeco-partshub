@@ -2,7 +2,7 @@
 // BOM 齐套用例：与库存匹配（型号/料号/封装/名称多级）→ 缺口汇总 → 一键出库。
 // 解析规则已下沉到 domain/bom/parser.js，本层只编排库存与流水。
 
-import { kvGetJSON } from '../infrastructure/kv/index.js'
+import { KV_BATCH, mapLimit } from '../infrastructure/kv/index.js'
 import { listCategories } from '../repositories/category.repository.js'
 import { listLocations } from '../repositories/location.repository.js'
 import { listPartsRaw } from '../repositories/part.repository.js'
@@ -112,29 +112,38 @@ function buildLocationIndex(locations) {
  */
 export async function matchBom(kv, rawRows = []) {
   const rows = rawRows.map((r, i) => normalizeBomRow(r, i + 1))
-  const parts = await listPartsRaw(kv)
-  const locations = await listLocations(kv)
+  const [parts, locations] = await Promise.all([listPartsRaw(kv), listLocations(kv)])
   const { pathOf } = buildLocationIndex(locations)
 
-  // 批量读取库存（分批并发，避免一次打爆 KV）
-  const batchesByPart = new Map()
-  const CHUNK = 24
-  for (let i = 0; i < parts.length; i += CHUNK) {
-    const slice = parts.slice(i, i + CHUNK)
-    await Promise.all(slice.map(async (p) => {
-      const batches = await listStock(kv, p.id)
-      batchesByPart.set(p.id, batches)
-    }))
-  }
-  const qtyOf = (partId) => (batchesByPart.get(partId) || []).reduce((s, b) => s + (Number(b.quantity) || 0), 0)
-
-  const lines = rows.map((row) => {
+  // 先在内存里完成打分，再只对命中/候选器件读取批次：
+  // BOM 行通常只引用少量料号，没必要把整库批次都读一遍。
+  const scoredRows = rows.map((row) => {
     const scored = parts
       .map((p) => ({ p, score: scorePart(p, row) }))
       .filter((x) => x.score >= SCORE.fuzzy)
       .sort((a, b) => b.score - a.score)
-
     const best = scored[0]
+    return { row, scored, best, fuzzy: best ? [] : fuzzyCandidates(parts, row) }
+  })
+
+  const neededIds = new Set()
+  for (const { scored, best, fuzzy } of scoredRows) {
+    if (best) {
+      neededIds.add(best.p.id)
+      for (const x of scored.slice(1, 4)) if (best.score - x.score < 40) neededIds.add(x.p.id)
+    } else {
+      for (const p of fuzzy) neededIds.add(p.id)
+    }
+  }
+  const pairs = await mapLimit([...neededIds], KV_BATCH, async (id) => [id, await listStock(kv, id)])
+  const batchesByPart = new Map(pairs)
+  const qtyByPart = new Map(pairs.map(([id, batches]) => [
+    id,
+    batches.reduce((s, b) => s + (Number(b.quantity) || 0), 0)
+  ]))
+  const qtyOf = (partId) => qtyByPart.get(partId) || 0
+
+  const lines = scoredRows.map(({ row, scored, best, fuzzy }) => {
     const result = {
       ...row,
       status: 'missing',
@@ -151,7 +160,7 @@ export async function matchBom(kv, rawRows = []) {
     }
 
     if (!best) {
-      result.candidates = fuzzyCandidates(parts, row).map((p) => ({
+      result.candidates = fuzzy.map((p) => ({
         partId: p.id, name: p.name, model: p.manufacturerModel || '', package: p.package || '', available: qtyOf(p.id)
       }))
       return result

@@ -36,7 +36,7 @@
 │  ├─ repositories/              # KV 持久化：分类、器件、批次、位置、流水、审计、索引
 │  ├─ infrastructure/            # KV 适配器（内存 / EdgeOne）与种子数据
 │  └─ http/                      # 路由表、鉴权、统一响应、各资源路由
-├─ functions/api/[...path].js    # EdgeOne Pages 边缘入口（仅做请求转发）
+├─ edge-functions/api/[[default]].js # EdgeOne Pages Edge Functions 入口（/api catch-all）
 ├─ tests/
 │  ├─ unit/                      # 领域与用例单测（MemoryKV）
 │  ├─ integration/               # 进程内 API 契约测试
@@ -109,7 +109,7 @@ app  →  modules  →  shared
 浏览器
   → shared/api/endpoints/*（资源方法）
   → shared/api/http.ts（/api + X-Auth-Token + 信封解析）
-  → EdgeOne 边缘函数 functions/api/[...path].js
+  → EdgeOne Edge Functions edge-functions/api/[[default]].js
   → server/http/router.js（鉴权 → 路由表 → 统一错误边界）
   → server/http/routes/*.routes.js（参数与状态码）
   → server/application/*.service.js（用例编排）

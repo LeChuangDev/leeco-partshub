@@ -2,7 +2,7 @@
 // 备份与恢复：全量导出（含项目与项目 BOM）与清空重建索引。
 // 恢复是显式的高风险操作，只允许 HTTP 层在鉴权后调用。
 
-import { kvGetJSON, kvPutJSON } from '../infrastructure/kv/index.js'
+import { kvGetJSON, kvPutJSON, KV_BATCH, mapLimit } from '../infrastructure/kv/index.js'
 import { nowISO } from '../domain/models.js'
 import { appendAudit } from '../repositories/audit.repository.js'
 import { listCategories } from '../repositories/category.repository.js'
@@ -14,27 +14,25 @@ import { listTransactions } from '../repositories/transaction.repository.js'
 import { exportAudits } from '../repositories/audit.repository.js'
 
 export async function exportAll(kv) {
-  const categories = await listCategories(kv)
-  const parts = await listPartsRaw(kv)
-  const locations = await listLocations(kv)
-  const stocks = []
-  for (const p of parts) {
-    const batches = await listStock(kv, p.id)
-    stocks.push(...batches)
-  }
-  const transactions = await listTransactions(kv, null, 100000)
-  const audits = await exportAudits(kv)
-  const meta = (await kvGetJSON(kv, 'meta:info')) || { version: 1 }
+  // 各集合互不依赖，一次并发读取；批次与项目文档再按有限并发批量取
+  const [categories, parts, locations, transactions, audits, meta, projectIds] = await Promise.all([
+    listCategories(kv),
+    listPartsRaw(kv),
+    listLocations(kv),
+    listTransactions(kv, null, 100000),
+    exportAudits(kv),
+    (async () => (await kvGetJSON(kv, 'meta:info')) || { version: 1 })(),
+    (async () => (await kvGetJSON(kv, 'index:projects')) || [])()
+  ])
+  const stockLists = await mapLimit(parts, KV_BATCH, (p) => listStock(kv, p.id))
+  const stocks = stockLists.flat()
   // 项目与其 BOM 行一并备份，避免恢复后项目表丢失
-  const projects = []
-  const projectBoms = []
-  const projectIds = (await kvGetJSON(kv, 'index:projects')) || []
-  for (const pid of projectIds) {
-    const project = await kvGetJSON(kv, `project:${pid}`)
-    if (project) projects.push(project)
-    const doc = await kvGetJSON(kv, `projectbom:${pid}`)
-    if (doc) projectBoms.push(doc)
-  }
+  const projectDocs = await mapLimit(projectIds, KV_BATCH, async (pid) => ({
+    project: await kvGetJSON(kv, `project:${pid}`),
+    doc: await kvGetJSON(kv, `projectbom:${pid}`)
+  }))
+  const projects = projectDocs.map((x) => x.project).filter(Boolean)
+  const projectBoms = projectDocs.map((x) => x.doc).filter(Boolean)
   return {
     exportedAt: nowISO(),
     version: meta.version || 1,

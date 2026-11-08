@@ -2,7 +2,7 @@
 // 元器件查询用例：分类/标签/关键词/工程表达式筛选 + 库存合计。
 // 组合 part、category、stock 三个仓储，仓储之间不互相依赖。
 
-import { kvGetJSON } from '../infrastructure/kv/index.js'
+import { kvGetJSON, KV_BATCH, mapLimit } from '../infrastructure/kv/index.js'
 import {
   eiaCode, expandSearchTokens, familyOfKey, matchesTokens,
   normalizePackage, parseSI, siVariants
@@ -50,11 +50,8 @@ export async function listParts(kv, opts = {}) {
   if (candidateIds === null) {
     candidateIds = new Set(await idxGet(kv, 'index:parts'))
   }
-  const items = []
-  for (const id of candidateIds) {
-    const p = await kvGetJSON(kv, `part:${id}`)
-    if (p) items.push(p)
-  }
+  const docs = await mapLimit([...candidateIds], KV_BATCH, (id) => kvGetJSON(kv, `part:${id}`))
+  const items = docs.filter(Boolean)
   // 文本检索 + 工程表达式：统一按 token 归一化匹配（1000nF 命中 1µF、103 命中 10k）
   const query = [search, expr].filter((x) => x && String(x).trim()).join(' ').trim()
   if (query) {
@@ -78,11 +75,11 @@ export async function listParts(kv, opts = {}) {
   const list = items.slice(start, start + pageSize)
   // 列表附带库存合计与批次（可用 withQuantity:false 关闭以节省 KV 读）
   if (opts.withQuantity !== false) {
-    await Promise.all(list.map(async (p) => {
+    await mapLimit(list, KV_BATCH, async (p) => {
       const batches = await listStock(kv, p.id)
       p.stocks = batches
       p.totalQuantity = batches.reduce((s, b) => s + (Number(b.quantity) || 0), 0)
-    }))
+    })
   }
   return { total, page, pageSize, list }
 }

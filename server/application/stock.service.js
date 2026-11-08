@@ -6,7 +6,7 @@ import { kvPutJSON } from '../infrastructure/kv/index.js'
 import { newTransaction, nowISO } from '../domain/models.js'
 import { normalizeSource } from '../domain/audit.js'
 import { getPart } from '../repositories/part.repository.js'
-import { createStock, listStock, partTotalQuantity } from '../repositories/stock.repository.js'
+import { createStock, listStock } from '../repositories/stock.repository.js'
 import { appendTransaction } from '../repositories/transaction.repository.js'
 import { appendAudit } from '../repositories/audit.repository.js'
 import { touchMeta } from '../repositories/kv-index.js'
@@ -32,12 +32,13 @@ export async function stockIn(kv, partId, input) {
   if (!isFinite(qty) || qty <= 0) return { ok: false, msg: '入库数量必须大于 0' }
   const price = Number(input.unitPrice)
   const unitPrice = isFinite(price) && price > 0 ? price : 0
-  const beforeQty = await partTotalQuantity(kv, partId)
+  // 一次读出批次：既算入库前总量，也用于合并目标查找，避免重复扫描
+  const batches = await listStock(kv, partId)
+  const beforeQty = batches.reduce((s, b) => s + (Number(b.quantity) || 0), 0)
 
   let stock
   let merged = false
   if (input.merge) {
-    const batches = await listStock(kv, partId)
     const locationId = input.locationId || null
     const target = batches.find((b) =>
       (b.locationId || null) === locationId &&
@@ -56,7 +57,7 @@ export async function stockIn(kv, partId, input) {
     stock = await createStock(kv, { ...input, partId, quantity: qty, unitPrice })
   }
 
-  const total = await partTotalQuantity(kv, partId)
+  const total = beforeQty + qty
   const source = normalizeSource(input)
   const txn = newTransaction({
     partId, stockId: stock.id, type: 'in', quantity: qty,
@@ -81,28 +82,29 @@ export async function stockOut(kv, partId, input) {
   if (!part) return { ok: false, msg: '元器件不存在' }
   const need = Number(input.quantity)
   if (!need || need <= 0) return { ok: false, msg: '出库数量必须大于 0' }
-  const total = await partTotalQuantity(kv, partId)
+  const batches = await listStock(kv, partId)
+  const total = batches.reduce((s, b) => s + (Number(b.quantity) || 0), 0)
   if (total < need) return { ok: false, msg: `库存不足：现有 ${total}，需 ${need}` }
 
   const source = normalizeSource(input)
   let remaining = need
-  const batches = await listStock(kv, partId)
   if (input.stockId) {
     batches.sort((a, b) => (a.id === input.stockId ? -1 : 1))
   } else {
     batches.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || '')) // FIFO
   }
   const txns = []
+  let balance = total // 余额随扣减递推，避免每个批次都重读整组批次
   for (const b of batches) {
     if (remaining <= 0) break
     if (b.quantity <= 0) continue
-    const beforeQty = await partTotalQuantity(kv, partId)
+    const beforeQty = balance
     const take = Math.min(b.quantity, remaining)
     b.quantity -= take
     b.lastOutAt = nowISO()
     await kvPutJSON(kv, `stock:${b.id}`, b)
     remaining -= take
-    const balance = await partTotalQuantity(kv, partId)
+    balance -= take
     const txn = newTransaction({
       partId, stockId: b.id, type: 'out', quantity: take, balance,
       reason: input.reason || '出库', orderNo: input.orderNo || '',

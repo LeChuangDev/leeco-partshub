@@ -2,6 +2,7 @@
 // 看板统计用例：库存总量/货值、安全库存预警、缺货、呆滞、趋势与分布。
 // 只读聚合，不写任何键。
 
+import { KV_BATCH, mapLimit } from '../infrastructure/kv/index.js'
 import { listCategories } from '../repositories/category.repository.js'
 import { idxGet } from '../repositories/kv-index.js'
 import { listPartsRaw } from '../repositories/part.repository.js'
@@ -72,10 +73,19 @@ function buildDistribution(records, keyFn, emptyLabel = '未填写', topN = 10) 
 }
 
 export async function getStats(kv, { period = 'week', staleDays = 180 } = {}) {
-  const categories = await listCategories(kv)
-  const parts = await listPartsRaw(kv)
-  const transactions = await listTransactions(kv, null, 100000)
-  const locationIds = await idxGet(kv, 'index:locations')
+  // 四组读取互不依赖，一次并发；器件与其批次在同一任务里读取，避免 N 次串行往返
+  const [categories, partData, transactions, locationIds] = await Promise.all([
+    listCategories(kv),
+    (async () => {
+      const all = await listPartsRaw(kv)
+      const batches = new Map(await mapLimit(all, KV_BATCH, async (p) => [p.id, await listStock(kv, p.id)]))
+      return { all, batches }
+    })(),
+    listTransactions(kv, null, 100000),
+    idxGet(kv, 'index:locations')
+  ])
+  const parts = partData.all
+  const batchesByPart = partData.batches
   const catMap = Object.fromEntries(categories.map((c) => [c.id, c]))
 
   let totalQuantity = 0
@@ -86,7 +96,7 @@ export async function getStats(kv, { period = 'week', staleDays = 180 } = {}) {
   const now = Date.now()
 
   for (const p of parts) {
-    const batches = await listStock(kv, p.id)
+    const batches = batchesByPart.get(p.id) || []
     const qty = batches.reduce((s, b) => s + (Number(b.quantity) || 0), 0)
     const value = batches.reduce((s, b) => s + (Number(b.quantity) || 0) * (Number(b.unitPrice) || 0), 0)
     totalQuantity += qty

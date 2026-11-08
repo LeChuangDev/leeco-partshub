@@ -12,8 +12,10 @@ export async function moveStock(kv, input = {}) {
   const result = await moveStockRecords(kv, input)
   if (!result.ok || !result.moved) return result
 
-  const part = await getPart(kv, input.partId)
-  const location = result.locationId ? await getLocation(kv, result.locationId) : null
+  const [part, location] = await Promise.all([
+    getPart(kv, input.partId),
+    result.locationId ? getLocation(kv, result.locationId) : Promise.resolve(null)
+  ])
   await appendAudit(kv, {
     action: 'stock.move',
     source: normalizeSource(input),

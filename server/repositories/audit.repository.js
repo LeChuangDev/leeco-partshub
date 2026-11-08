@@ -2,7 +2,7 @@
 // 操作日志：只追加的审计事件，与业务流水分开存放。
 // 备份恢复会重建业务数据，但不会清空审计索引，保证「谁在什么时候改了库存」可回溯。
 
-import { kvGetJSON, kvPutJSON } from '../infrastructure/kv/index.js'
+import { kvGetJSON, kvPutJSON, KV_BATCH, mapLimit } from '../infrastructure/kv/index.js'
 import { nowISO, uid } from '../domain/models.js'
 import { idxAdd, idxGet } from './kv-index.js'
 
@@ -37,9 +37,9 @@ export async function appendAudit(kv, event = {}) {
 /** 查询审计事件：支持按动作、来源、器件与关键词过滤，按时间倒序 */
 export async function listAudits(kv, { limit = 200, action, source, partId, keyword } = {}) {
   const ids = await idxGet(kv, INDEX)
+  const docs = await mapLimit(ids, KV_BATCH, (id) => kvGetJSON(kv, `audit:${id}`))
   const items = []
-  for (const id of ids) {
-    const record = await kvGetJSON(kv, `audit:${id}`)
+  for (const record of docs) {
     if (!record) continue
     if (action && record.action !== action) continue
     if (source && record.source !== source) continue
