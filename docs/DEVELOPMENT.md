@@ -47,6 +47,7 @@ npm run test:api    # 进程内 API 契约测试（无需服务）
 npm run build       # 生产构建
 npm run check       # 路径自检 + 以上四项串行执行
 npm run check:paths # 单独验证代码不含本机绝对路径（项目目录改名后运行）
+```
 
 ## 逐模块功能验证
 
@@ -58,8 +59,7 @@ npm run verify:ui        # 浏览器逐路由、全局快捷键、主题、移�
 
 `verify:modules` 通过 `PORT` 与 `KV_FILE` 环境变量启动独立 API 实例（默认 8788 + 临时 KV），
 结束自动关闭并删除临时数据；`verify:ui` 只读，不写演示库。截图输出到 `tests/.artifacts/modules/`。
-逐模块结论见 [docs/VERIFICATION-REPORT.md](VERIFICATION-REPORT.md)。
-```
+逐模块结论见 [逐模块验证报告](VERIFICATION-REPORT.md)。
 
 UI 端到端验证需要先启动 `npm run dev:all`：
 
@@ -97,8 +97,11 @@ node tests/e2e/ui-report-improvements.mjs          # 品牌标记、操作日志
 
 | 变量 | 作用 | 生产要求 |
 | --- | --- | --- |
-| `AUTH_TOKEN` | 接口令牌，前端登录时输入相同值 | 必填 |
+| `AUTH_TOKEN` | 接口令牌，前端登录时输入相同值 | 必填，勿提交到仓库 |
 | `AUTH_DISABLED` | `1` 时跳过鉴权 | **禁止**设置 |
+| `KV` | EdgeOne 边缘 KV 绑定 | 由控制台注入 |
+| `KV_FILE` | 本地 FileKV 路径（默认 `.data/local-kv.json`） | 仅本地 |
+| `PORT` | 本地 API 端口（默认 `8787`） | 仅本地，用于并行隔离实例 |
 
 ## 新增能力速查
 
@@ -107,6 +110,3 @@ node tests/e2e/ui-report-improvements.mjs          # 品牌标记、操作日志
 - **恢复防护**：上传备份 → 服务端预演 → 输入 `RESTORE` → 覆盖写入；写入失败整体回滚，会话内可手动回滚。
 - **扫码合并**：同器件 + 同库位 + 同单价的连续扫码并入同一批次，不再产生大量 `quantity=1` 碎片。
 - **品牌文案**：`src/shared/brand.ts`（前端）与 `server/domain/brand.js`（二维码）是唯一来源；改名前先确认 `LEGACY_BRAND_TITLES` 已包含旧名，避免旧标签失效。
-
-| `KV_FILE` | 本地 FileKV 路径 | 仅本地 |
-| `KV` | EdgeOne 边缘 KV 绑定 | 由控制台注入 |
