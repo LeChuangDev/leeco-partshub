@@ -207,6 +207,8 @@ npm run build        # 产物 dist
 
 面向无网络或不想依赖 EdgeOne 的场景。应用内置本地服务，数据保存在本机，和线上 KV 完全隔离；两份数据通过「备份与设置」手动导出/恢复。
 
+安装包下载：[GitHub Releases v1.0.0](https://github.com/LeChuangDev/leeco-partshub/releases/latest)
+
 ```bash
 npm run offline:dev     # 构建离线前端并启动桌面版
 npm run offline:pack    # 生成 Windows 安装包 release/LeecoPartsHub-1.0.0-x64.exe
