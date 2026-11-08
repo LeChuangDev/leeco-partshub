@@ -214,7 +214,7 @@ npm run offline:dir     # 只生成免安装目录 release/win-unpacked
 ```
 
 - 内置服务复用 `server/http/router.js` + `FileKV`，静态资源与 `/api` 都走 `127.0.0.1` 随机端口，不监听外网。
-- 数据目录：应用菜单「文件 → 打开数据目录」；Windows 默认在 `%APPDATA%\LeecoPartsHub\data\local-kv.json`。
+- 数据目录：应用菜单「文件 → 打开数据目录」；Windows 默认在 `%APPDATA%\leeco-partshub\data\local-kv.json`。
 - 离线版无需令牌，启动自动进入；附件与备份不受 EdgeOne 1MB 请求体限制。
 - 安装包未配置代码签名，首次运行可能出现 SmartScreen 提示，选择「仍要运行」即可。
 
