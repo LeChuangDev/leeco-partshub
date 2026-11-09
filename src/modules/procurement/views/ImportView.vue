@@ -115,17 +115,29 @@
     <div v-if="EXTERNAL_API" class="card card-pad mt-16 proxy">
       <div class="proxy-head">
         <div class="row gap-8">
-          <span class="block-title" style="margin: 0">器件信息自动补全</span>
-          <span class="chip amber">待接入</span>
+          <span class="block-title" style="margin: 0">器件信息查询</span>
+          <span class="chip">嘉立创开放平台</span>
         </div>
-        <span class="dim" style="font-size: 12px">模块 3.3</span>
+        <span class="dim" style="font-size: 12px">服务端代理</span>
       </div>
-      <p class="muted">输入平台料号自动拉取参数与规格书链接。当前为占位实现，部署后由边缘函数代理各平台公开接口。</p>
+      <p class="muted">按料号从嘉立创开放平台拉取名称、品牌、封装、库存与价格。需在服务端配置 <code class="code">JLC_APP_ID</code> / <code class="code">JLC_ACCESS_KEY</code> / <code class="code">JLC_SECRET_KEY</code>，接口路径由 <code class="code">JLC_COMPONENT_PATH</code> 指定。</p>
       <div class="row gap-8" style="flex-wrap: wrap">
-        <n-select v-model:value="infoPlatform" :options="platOpts" size="small" style="width: 170px" />
+        <n-select v-model:value="infoPlatform" :options="infoPlatformOptions" size="small" style="width: 170px" />
         <n-input v-model:value="infoSku" placeholder="料号，如 C12345" size="small" style="width: 190px" @keyup.enter="queryInfo" />
         <n-button size="small" @click="queryInfo" :loading="infoLoading">查询</n-button>
       </div>
+      <n-descriptions v-if="infoItem" bordered :column="2" size="small" style="margin-top: 12px">
+        <n-descriptions-item label="名称">{{ infoItem.name || '—' }}</n-descriptions-item>
+        <n-descriptions-item label="品牌">{{ infoItem.brand || '—' }}</n-descriptions-item>
+        <n-descriptions-item label="型号">{{ infoItem.model || '—' }}</n-descriptions-item>
+        <n-descriptions-item label="封装">{{ infoItem.package || '—' }}</n-descriptions-item>
+        <n-descriptions-item label="库存">{{ infoItem.stock ?? '—' }}</n-descriptions-item>
+        <n-descriptions-item label="单价">{{ infoItem.price ?? '—' }}</n-descriptions-item>
+        <n-descriptions-item label="数据手册" :span="2">
+          <a v-if="infoItem.datasheetUrl" :href="infoItem.datasheetUrl" target="_blank" rel="noreferrer">{{ infoItem.datasheetUrl }}</a>
+          <span v-else>—</span>
+        </n-descriptions-item>
+      </n-descriptions>
       <n-alert v-if="infoMsg" type="warning" :bordered="false" style="margin-top: 12px">{{ infoMsg }}</n-alert>
     </div>
   </div>
@@ -135,7 +147,8 @@
 import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  NUpload, NUploadDragger, NSelect, NButton, NDataTable, NAlert, NTag, NInput, useDialog, useMessage
+  NUpload, NUploadDragger, NSelect, NButton, NDataTable, NAlert, NTag, NInput,
+  NDescriptions, NDescriptionsItem, useDialog, useMessage
 } from 'naive-ui'
 import { api } from '@/shared/api'
 import { mapRow, detectPlatform, PLATFORMS } from '@server/domain/import-map.js'
@@ -384,17 +397,20 @@ async function confirmUndo() {
 
 function goParts() { router.push({ name: 'parts' }) }
 
-/* 第三方代理占位查询 */
+/* 嘉立创开放平台查询（服务端代理） */
+const infoPlatformOptions = [{ label: '立创 / 嘉立创', value: 'lcsc' }]
 const infoPlatform = ref('lcsc')
 const infoSku = ref('')
 const infoMsg = ref('')
+const infoItem = ref<any>(null)
 const infoLoading = ref(false)
 async function queryInfo() {
   if (!infoSku.value.trim()) { message.warning('请输入料号'); return }
-  infoLoading.value = true; infoMsg.value = ''
+  infoLoading.value = true; infoMsg.value = ''; infoItem.value = null
   try {
-    const r: any = await api.partInfo(infoPlatform.value, infoSku.value)
-    infoMsg.value = r.message || '无数据'
+    const r: any = await api.partInfo(infoPlatform.value, infoSku.value.trim())
+    infoItem.value = r.item || null
+    if (!r.item) infoMsg.value = r.message || '未查询到该料号'
   } catch (e: any) { infoMsg.value = e.message }
   finally { infoLoading.value = false }
 }

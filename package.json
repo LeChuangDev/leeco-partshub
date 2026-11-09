@@ -1,7 +1,7 @@
 {
   "name": "leeco-partshub",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "樂創元件库 Leeco PartsHub — 个人元器件库存管理系统（EdgeOne Serverless / Vue 3 / Electron 离线版）",
   "author": "LeChuangDev",

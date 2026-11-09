@@ -221,15 +221,38 @@ EdgeOne KV 需要申请审核；不想等可以改用 Cloudflare Pages，全程�
 
 入口已在仓库中：`functions/api/[[path]].js`（与 EdgeOne 入口共用同一份服务端逻辑）。免费额度为读 10 万次/天、写 1000 次/天、存储 1GB，个人使用足够；超出后写入会被限流，需要等待次日重置。数据迁移：本地「备份与设置」导出 JSON → 线上登录后恢复。
 
+## 嘉立创开放平台接入
+
+按 [嘉立创开放平台开发指南](https://open.jlc.com/develop-guide) 实现，服务端代理，密钥不进前端：
+
+| 变量 | 说明 |
+| --- | --- |
+| `JLC_APP_ID` | 应用 ID（控制台创建应用后获得） |
+| `JLC_ACCESS_KEY` | API 密钥 AccessKey（密钥的唯一标识） |
+| `JLC_SECRET_KEY` | API 密钥 SecretKey（参与 HmacSHA256 签名，切勿泄露） |
+| `JLC_COMPONENT_PATH` | 器件查询接口路径，按应用获授权的 API 文档填写，如 `/component/v1/detail` |
+| `JLC_BASE_URL` | 可选，默认 `https://open-api.jlc.com` |
+
+实现要点（`server/infrastructure/jlc/client.js`）：
+
+- 仅 HTTPS + POST + JSON，UTF-8
+- 签名串：`POST\n路径\n秒级时间戳\n32位随机串\n请求体JSON\n`，用 SecretKey 做 HmacSHA256 后 Base64
+- 请求头：`Authorization: JOP appid="…",accesskey="…",nonce="…",timestamp="…",signature="…"`
+- 失败时保留 `J-Trace-ID` 便于官方客服定位
+
+使用方式：「订单导入」页底部「器件信息查询」输入料号（如 `C12345`）→ 查询。未配置密钥或未填接口路径时，界面会给出明确提示，不会报错崩溃。
+
+> 注意：开放平台需要先创建应用并申请对应接口权限；不同应用可用的接口路径不同，因此路径做成配置项，不写死。离线桌面版不联网，该入口自动隐藏且接口返回 501。
+
 ## 离线桌面版（Electron）
 
 面向无网络或不想依赖 EdgeOne 的场景。应用内置本地服务，数据保存在本机，和线上 KV 完全隔离；两份数据通过「备份与设置」手动导出/恢复。
 
-安装包下载：[GitHub Releases v1.0.0](https://github.com/LeChuangDev/leeco-partshub/releases/latest)
+安装包下载：[GitHub Releases v1.1.0](https://github.com/LeChuangDev/leeco-partshub/releases/latest)
 
 ```bash
 npm run offline:dev     # 构建离线前端并启动桌面版
-npm run offline:pack    # 生成 Windows 安装包 release/LeecoPartsHub-1.0.0-x64.exe
+npm run offline:pack    # 生成 Windows 安装包 release/LeecoPartsHub-1.1.0-x64.exe
 npm run offline:dir     # 只生成免安装目录 release/win-unpacked
 ```
 

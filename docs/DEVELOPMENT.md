@@ -153,6 +153,9 @@ EdgeOne KV 需申请审核；Cloudflare 的 KV 免费额度可直接使用，且
 | `KV` | EdgeOne 边缘 KV 绑定（全局变量或 `env.KV`） | 由控制台注入 |
 | `KV_FILE` | 本地 FileKV 路径（默认 `.data/local-kv.json`） | 仅本地 |
 | `PORT` | 本地 API 端口（默认 `8787`） | 仅本地，用于并行隔离实例 |
+| `JLC_APP_ID` / `JLC_ACCESS_KEY` / `JLC_SECRET_KEY` | 嘉立创开放平台应用密钥 | 线上/本地均可配置 |
+| `JLC_COMPONENT_PATH` | 器件查询接口路径（按应用授权的 API 文档填写） | 使用嘉立创查询时必填 |
+| `JLC_BASE_URL` | 开放平台地址，默认 `https://open-api.jlc.com` | 一般无需修改 |
 
 ## 新增能力速查
 

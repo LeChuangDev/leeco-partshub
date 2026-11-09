@@ -724,6 +724,42 @@ async function main() {
   )
   ok('联网版仍返回占位数据', onlineInfo.status === 200)
 
+  console.log('\n[26] 嘉立创开放平台接入')
+  const { buildStringToSign, signString } = await import('../../server/infrastructure/jlc/client.js')
+  const { queryComponent, normalizeComponent } = await import('../../server/application/jlc.service.js')
+  const officialText = buildStringToSign({
+    method: 'POST',
+    path: '/order/v1/createOrder',
+    timestamp: 1625208260,
+    nonce: 'IZHEJYNIHYZIE8S0LLC0VWTPJVRRTO50',
+    body: '{"goodsId":100,"quantity":52,"createdTime":"2024-03-21 10:03:20"}'
+  })
+  const officialSign = await signString('z0BWlikshimuyiwBsH1i2qwnzMb3j3kA', officialText)
+  ok('签名串格式与官方一致', officialText.startsWith('POST\n/order/v1/createOrder\n1625208260\nIZHEJYNIHYZIE8S0LLC0VWTPJVRRTO50\n'))
+  ok('HmacSHA256 签名值匹配官方示例',
+    officialSign === 'sygwKhKBkLwHVv0c7D+a/A7JTEJjGH/kLugFKh16918=', officialSign)
+
+  const unconfigured = await queryComponent({}, 'C12345')
+  ok('未配置密钥时给出配置指引', unconfigured.configured === false && unconfigured.message.includes('JLC_APP_ID'))
+  const noPath = await queryComponent({ JLC_APP_ID: 'a', JLC_ACCESS_KEY: 'b', JLC_SECRET_KEY: 'c' }, 'C12345')
+  ok('已配置密钥但缺少接口路径时提示', noPath.configured === true && noPath.message.includes('JLC_COMPONENT_PATH'))
+
+  const fakeFetch = async () => new Response(JSON.stringify({
+    code: 0,
+    data: { list: [{ productCode: 'C12345', productName: '贴片电阻 10kΩ', brandName: 'YAGEO', package: '0603', stockNumber: 1200, price: 0.012, datasheetUrl: 'https://example.com/a.pdf' }] }
+  }), { status: 200, headers: { 'J-Trace-ID': 'trace-1' } })
+  const queried = await queryComponent(
+    { JLC_APP_ID: 'a', JLC_ACCESS_KEY: 'b', JLC_SECRET_KEY: 'c', JLC_COMPONENT_PATH: '/component/v1/detail' },
+    'C12345',
+    { fetchImpl: fakeFetch, now: () => 1625208260000, nonce: 'N'.repeat(32) }
+  )
+  ok('查询成功并归一化字段',
+    queried.ok === true && queried.item.name === '贴片电阻 10kΩ' && queried.item.package === '0603' && queried.item.stock === 1200,
+    JSON.stringify(queried.item))
+  ok('返回 traceId 便于排查', queried.traceId === 'trace-1')
+  const normalized = normalizeComponent({ componentCode: 'C9', goodsName: '电容 100nF', brand: 'Samsung', encapsulation: '0603', inventory: 50, salePrice: 0.02 })
+  ok('归一化兼容不同字段别名', normalized.sku === 'C9' && normalized.brand === 'Samsung' && normalized.package === '0603')
+
   console.log(`\n========== 结果: ${passed} 通过, ${failed} 失败 ==========`)
   process.exit(failed === 0 ? 0 : 1)
 }
