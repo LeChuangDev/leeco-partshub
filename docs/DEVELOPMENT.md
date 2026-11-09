@@ -122,8 +122,8 @@ EdgeOne KV 需申请审核；Cloudflare 的 KV 免费额度可直接使用，且
 
 1. Cloudflare 控制台 → Workers & Pages → Create → Pages → Connect to Git，选择本仓库。
 2. 构建命令 `npm run build`，输出目录 `dist`，框架预设 Vite（根目录保持默认可）。
-3. 项目 Settings → Functions → KV namespace bindings：新建命名空间 `leeco-partshub`，变量名填 `KV`。
-4. 项目 Settings → Environment variables：添加 `AUTH_TOKEN`（强随机），不要添加 `AUTH_DISABLED`。
+3. 项目 Settings → Environment variables：添加 `AUTH_TOKEN`（强随机）、`NODE_VERSION=22`、`ELECTRON_SKIP_BINARY_DOWNLOAD=1`（跳过桌面版二进制下载），不要添加 `AUTH_DISABLED`。
+4. 项目 Settings → Functions → KV namespace bindings：新建命名空间 `leeco-partshub`，变量名填 `KV`。
 5. 重新部署，访问 `https://<项目名>.pages.dev`。
 
 实现说明：

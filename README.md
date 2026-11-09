@@ -211,9 +211,13 @@ EdgeOne KV 需要申请审核；不想等可以改用 Cloudflare Pages，全程�
 
 1. Cloudflare 控制台 → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**，选择本仓库。
 2. 构建配置：命令 `npm run build`，输出目录 `dist`，框架预设 `Vite`。
-3. 项目 → **Settings → Functions → KV namespace bindings**，创建命名空间 `leeco-partshub`，**变量名填 `KV`**。
-4. 项目 → **Settings → Environment variables**，添加 `AUTH_TOKEN`（强随机值），不要加 `AUTH_DISABLED`。
-5. **Retry deployment**，访问 `https://<项目名>.pages.dev`。
+3. 项目 → **Settings → Environment variables**，添加：
+   - `AUTH_TOKEN` = 你的访问密码（强随机值）
+   - `NODE_VERSION` = `22`
+   - `ELECTRON_SKIP_BINARY_DOWNLOAD` = `1`（跳过桌面版 Electron 二进制下载，加快构建）
+   - 不要添加 `AUTH_DISABLED`
+4. 项目 → **Settings → Functions → KV namespace bindings**，创建命名空间 `leeco-partshub`，**变量名填 `KV`**（Production 与 Preview 都绑定）。
+5. **Retry deployment**，访问 `https://<项目名>.pages.dev`，输入 `AUTH_TOKEN` 相同的密码登录。
 
 入口已在仓库中：`functions/api/[[path]].js`（与 EdgeOne 入口共用同一份服务端逻辑）。免费额度为读 10 万次/天、写 1000 次/天、存储 1GB，个人使用足够；超出后写入会被限流，需要等待次日重置。数据迁移：本地「备份与设置」导出 JSON → 线上登录后恢复。
 
