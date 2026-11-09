@@ -88,7 +88,7 @@ import AppIcon from '@/shared/ui/AppIcon.vue'
 import ParamValueInput from '@/shared/ui/ParamValueInput.vue'
 import ParamComboPicker from '@/shared/ui/ParamComboPicker.vue'
 import { extractParamQuery } from '@server/domain/param-suggest.js'
-import { IS_EDGE } from '@/shared/offline'
+import { ATTACHMENT_LIMIT, IS_EDGE } from '@/shared/offline'
 import type { Category, Part } from '@/shared/api/types'
 
 const props = defineProps<{ show: boolean; part: Part | null; categories: Category[] }>()
@@ -164,10 +164,9 @@ async function save() {
 function onUpload(o: any) {
   const file = o?.file?.file as File
   if (!file) return
-  // 附件以 Base64 存在 KV：本地/离线版放宽到 2MB/6MB；
-  // 线上 Edge Functions 单次请求体上限 1MB，Base64 还会膨胀约 1/3，因此收紧到 300KB/600KB。
-  const MAX_FILE = (IS_EDGE ? 300 : 2048) * 1024
-  const MAX_TOTAL = (IS_EDGE ? 600 : 6144) * 1024
+  // 附件以 Base64 存在 KV：上限由运行形态决定（线上 300KB/600KB，本地与离线版 2MB/6MB）
+  const MAX_FILE = ATTACHMENT_LIMIT.file
+  const MAX_TOTAL = ATTACHMENT_LIMIT.total
   if (file.size > MAX_FILE) {
     message.warning(`「${file.name}」超过 ${Math.round(MAX_FILE / 1024)}KB，请改用外链或压缩后再上传`)
     return

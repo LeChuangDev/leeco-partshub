@@ -116,7 +116,7 @@ import { useAuth } from '@/modules/auth/stores/auth'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import PageHeader from '@/shared/ui/PageHeader.vue'
 import { BRAND } from '@/shared/brand'
-import { IS_EDGE, IS_OFFLINE } from '@/shared/offline'
+import { BODY_LIMIT, IS_EDGE, IS_OFFLINE } from '@/shared/offline'
 import { emitDataChanged } from '@/shared/utils/events'
 
 const message = useMessage()
@@ -148,9 +148,8 @@ async function exportJson() {
 async function restore(o: any) {
   const file = o?.file?.file as File
   if (!file) return
-  // EdgeOne Edge Functions 请求体上限 1MB：线上把备份控制在 900KB 以内；本地/离线版仍允许 20MB
-  const limit = (IS_EDGE ? 900 : 20 * 1024) * 1024
-  if (file.size > limit) {
+  // 体积上限由运行形态决定（线上 EdgeOne 900KB，本地/离线 20MB）
+  if (file.size > BODY_LIMIT) {
     message.error(IS_EDGE
       ? '备份文件超过 900KB：EdgeOne 单次请求上限 1MB，请改用不含附件的备份或拆分后恢复'
       : '备份文件超过 20MB，已拒绝')

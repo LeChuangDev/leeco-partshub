@@ -201,7 +201,21 @@ npm run build        # 产物 dist
 | `AUTH_DISABLED` | `1` 时跳过鉴权 | 禁止设置 |
 | `KV_FILE` / `PORT` | 本地 FileKV 路径与端口 | 仅本地使用 |
 
+本地可把令牌写入项目根目录 `.env`（已 gitignore），执行 `npm run dev:api` 时自动读取；离线桌面版不校验令牌。
+
 详细步骤见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+
+### 备选：Cloudflare Pages + KV（免费、免审核，无需本地安装）
+
+EdgeOne KV 需要申请审核；不想等可以改用 Cloudflare Pages，全程在网页控制台操作：
+
+1. Cloudflare 控制台 → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**，选择本仓库。
+2. 构建配置：命令 `npm run build`，输出目录 `dist`，框架预设 `Vite`。
+3. 项目 → **Settings → Functions → KV namespace bindings**，创建命名空间 `leeco-partshub`，**变量名填 `KV`**。
+4. 项目 → **Settings → Environment variables**，添加 `AUTH_TOKEN`（强随机值），不要加 `AUTH_DISABLED`。
+5. **Retry deployment**，访问 `https://<项目名>.pages.dev`。
+
+入口已在仓库中：`functions/api/[[path]].js`（与 EdgeOne 入口共用同一份服务端逻辑）。免费额度为读 10 万次/天、写 1000 次/天、存储 1GB，个人使用足够；超出后写入会被限流，需要等待次日重置。数据迁移：本地「备份与设置」导出 JSON → 线上登录后恢复。
 
 ## 离线桌面版（Electron）
 
@@ -218,6 +232,7 @@ npm run offline:dir     # 只生成免安装目录 release/win-unpacked
 - 内置服务复用 `server/http/router.js` + `FileKV`，静态资源与 `/api` 都走 `127.0.0.1` 随机端口，不监听外网。
 - 数据目录：应用菜单「文件 → 打开数据目录」；Windows 默认在 `%APPDATA%\leeco-partshub\data\local-kv.json`。
 - 离线版无需令牌，启动自动进入；附件与备份不受 EdgeOne 1MB 请求体限制。
+- 离线版不联网：嘉立创等第三方接口代理在离线版中关闭（接口返回 501，界面对应入口隐藏）。
 - 安装包未配置代码签名，首次运行可能出现 SmartScreen 提示，选择「仍要运行」即可。
 
 国内网络打包前可先设置镜像：

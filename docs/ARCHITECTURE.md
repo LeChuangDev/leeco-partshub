@@ -37,6 +37,7 @@
 │  ├─ infrastructure/            # KV 适配器（内存 / EdgeOne）与种子数据
 │  └─ http/                      # 路由表、鉴权、统一响应、各资源路由
 ├─ edge-functions/api/[[default]].js # EdgeOne Pages Edge Functions 入口（/api catch-all）
+├─ functions/api/[[path]].js      # Cloudflare Pages Functions 入口（/api catch-all）
 ├─ electron/                     # 离线桌面版：主进程 + 本地静态/API 服务（FileKV）
 ├─ tests/
 │  ├─ unit/                      # 领域与用例单测（MemoryKV）

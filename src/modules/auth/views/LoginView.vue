@@ -19,7 +19,7 @@
         :disabled="devBypass"
         @keyup.enter="submit"
       />
-      <p class="hint">令牌由 EdgeOne 环境变量 <code>AUTH_TOKEN</code> 校验。<br/>本地默认：<code>dev-leeco-token</code></p>
+      <p class="hint">令牌由服务端环境变量 <code>AUTH_TOKEN</code> 校验，请向管理员获取。</p>
       <n-button type="primary" size="large" block strong :loading="loading" @click="submit">
         {{ devBypass ? '直接进入系统' : '进入系统' }}
       </n-button>

@@ -111,8 +111,8 @@
       </div>
     </div>
 
-    <!-- 第三方代理占位 -->
-    <div class="card card-pad mt-16 proxy">
+    <!-- 第三方代理占位：离线版不联网，直接隐藏 -->
+    <div v-if="EXTERNAL_API" class="card card-pad mt-16 proxy">
       <div class="proxy-head">
         <div class="row gap-8">
           <span class="block-title" style="margin: 0">器件信息自动补全</span>
@@ -141,7 +141,7 @@ import { api } from '@/shared/api'
 import { mapRow, detectPlatform, PLATFORMS } from '@server/domain/import-map.js'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import PageHeader from '@/shared/ui/PageHeader.vue'
-import { IS_EDGE } from '@/shared/offline'
+import { BODY_LIMIT, EXTERNAL_API, IS_EDGE } from '@/shared/offline'
 import { emitDataChanged } from '@/shared/utils/events'
 import type { Location } from '@/shared/api/types'
 
@@ -292,7 +292,7 @@ async function onFile(o: any) {
 
 async function buildPlan() {
   const mapped = rawRows.value.map((r) => mapRow(platform.value, r))
-  if (IS_EDGE && JSON.stringify(mapped).length > 900 * 1024) {
+  if (IS_EDGE && JSON.stringify(mapped).length > BODY_LIMIT) {
     message.error('导入数据超过 900KB：EdgeOne 单次请求上限 1MB，请把表格拆分成多批导入')
     items.value = []
     summary.value = { match: 0, create: 0, skip: 0, similar: 0 }
@@ -333,7 +333,7 @@ async function doCommit() {
       locationId: it._loc || defaultLoc.value || null,
       action: checked.value.includes(it.index) ? it.action : 'skip'
     }))
-    if (IS_EDGE && JSON.stringify(out).length > 900 * 1024) {
+    if (IS_EDGE && JSON.stringify(out).length > BODY_LIMIT) {
       message.error('提交数据超过 900KB：EdgeOne 单次请求上限 1MB，请减少勾选行数后分批入库')
       return
     }

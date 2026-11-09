@@ -9,9 +9,12 @@ import {
 } from '../../repositories/part.repository.js'
 import { listStock } from '../../repositories/stock.repository.js'
 
-export async function handleParts({ request, method, url, kv, seg }) {
-  // /api/parts/info/:platform/:sku —— 第三方器件信息（占位实现）
+export async function handleParts({ request, method, url, kv, seg, env }) {
+  // /api/parts/info/:platform/:sku —— 第三方器件信息代理（离线版不提供公网访问能力）
   if (seg[1] === 'info' && seg[2] && seg[3]) {
+    if (env && env.OFFLINE === '1') {
+      return json(501, {}, '离线版不联网，无法查询嘉立创等第三方接口', 501)
+    }
     return json(0, placeholderPartInfo(seg[2], seg[3]))
   }
   const id = url.searchParams.get('id')

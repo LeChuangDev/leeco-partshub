@@ -652,6 +652,78 @@ async function main() {
   const edgeNoKVBody = await edgeNoKV.json()
   ok('缺少 KV 绑定时明确报错', edgeNoKV.status === 500 && String(edgeNoKVBody.msg).includes('KV'))
 
+  console.log('\n[24] Cloudflare Pages 入口')
+  // 模拟 Cloudflare KV：list 返回 { keys: [{ name }], list_complete, cursor }
+  class FakeCFBinding {
+    constructor() { this.map = new Map() }
+    async get(key) { return this.map.get(key) ?? null }
+    async put(key, value) { this.map.set(key, value) }
+    async delete(key) { this.map.delete(key) }
+    async list({ prefix = '', limit = 1000, cursor } = {}) {
+      const all = [...this.map.keys()].filter((k) => k.startsWith(prefix)).sort()
+      const start = cursor ? all.indexOf(cursor) : 0
+      const page = all.slice(start, start + Math.min(limit, 1000))
+      const end = start + page.length
+      return {
+        keys: page.map((name) => ({ name })),
+        list_complete: end >= all.length,
+        cursor: end < all.length ? all[end] : undefined
+      }
+    }
+  }
+  const { onRequest: cfOnRequest } = await import('../../functions/api/[[path]].js')
+  const cfEnv = { KV: new FakeCFBinding(), AUTH_TOKEN: 'secret' }
+  const cfMeta = await cfOnRequest({
+    request: new Request('https://example.pages.dev/api/meta', { headers: { 'X-Auth-Token': 'secret' } }),
+    env: cfEnv
+  })
+  const cfMetaBody = await cfMeta.json()
+  ok('Cloudflare 入口复用统一路由', cfMeta.status === 200 && cfMetaBody.code === 0, JSON.stringify(cfMetaBody))
+  ok('Cloudflare 首次请求完成种子', Number(cfMetaBody.data?.templateVersion) >= 2)
+  const cfCreated = await cfOnRequest({
+    request: new Request('https://example.pages.dev/api/parts', {
+      method: 'POST',
+      headers: { 'X-Auth-Token': 'secret', 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'CF 测试电阻', package: '0603' })
+    }),
+    env: cfEnv
+  })
+  const cfCreatedBody = await cfCreated.json()
+  ok('Cloudflare 可写器件', cfCreated.status === 200 && cfCreatedBody.code === 0, JSON.stringify(cfCreatedBody))
+  const cfList = await cfOnRequest({
+    request: new Request('https://example.pages.dev/api/parts?pageSize=5', { headers: { 'X-Auth-Token': 'secret' } }),
+    env: cfEnv
+  })
+  const cfListBody = await cfList.json()
+  ok('Cloudflare 可读回写入的数据', cfListBody.data?.total === 1, JSON.stringify(cfListBody.data?.total))
+  const cfUnauth = await cfOnRequest({
+    request: new Request('https://example.pages.dev/api/meta'),
+    env: cfEnv
+  })
+  ok('Cloudflare 缺少令牌返回 401', cfUnauth.status === 401)
+  const cfNoKV = await cfOnRequest({
+    request: new Request('https://example.pages.dev/api/meta', { headers: { 'X-Auth-Token': 'secret' } }),
+    env: { AUTH_TOKEN: 'secret' }
+  })
+  ok('Cloudflare 缺少 KV 返回明确报错', cfNoKV.status === 500)
+
+  console.log('\n[25] 离线版能力边界')
+  const { handleApi } = await import('../../server/http/router.js')
+  const infoUrl = 'https://local/api/parts/info/lcsc/C12345'
+  const offlineInfo = await handleApi(
+    new Request(infoUrl),
+    { LOCAL_KV: new MemoryKV(), AUTH_DISABLED: '1', OFFLINE: '1' },
+    new URL(infoUrl)
+  )
+  const offlineInfoBody = await offlineInfo.json()
+  ok('离线版第三方接口返回 501', offlineInfo.status === 501 && String(offlineInfoBody.msg).includes('离线'), JSON.stringify(offlineInfoBody))
+  const onlineInfo = await handleApi(
+    new Request(infoUrl),
+    { LOCAL_KV: new MemoryKV(), AUTH_DISABLED: '1' },
+    new URL(infoUrl)
+  )
+  ok('联网版仍返回占位数据', onlineInfo.status === 200)
+
   console.log(`\n========== 结果: ${passed} 通过, ${failed} 失败 ==========`)
   process.exit(failed === 0 ? 0 : 1)
 }

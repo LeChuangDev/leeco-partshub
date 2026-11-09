@@ -31,6 +31,15 @@ npm run dev:api   # 本地 API，http://127.0.0.1:8787
 AUTH_DISABLED=0 AUTH_TOKEN=my-token npm run dev:api
 ```
 
+也可以把令牌写进项目根目录 `.env`（已被 `.gitignore` 忽略），`dev:api` 会自动读取，前端登录页输入同一个值即可：
+
+```dotenv
+AUTH_TOKEN=你的令牌
+AUTH_DISABLED=0
+```
+
+线上（Cloudflare / EdgeOne）在控制台配置同名环境变量，值保持一致即可。
+
 ### 演示数据
 
 ```bash
@@ -106,6 +115,24 @@ Edge Functions 单次请求体上限 **1MB**、CPU 时间 200ms（I/O 不计）�
 > EdgeOne KV 为最终一致存储（约 60s 全球同步），单用户低并发场景可接受；多端同时写同一索引时可能短暂读到旧值，批量导入后建议稍等再刷新。
 
 可选：将 `dist` 上传至腾讯云 COS 私有桶，由 EdgeOne 回源加速，静态资源无需公开读。
+
+## 部署到 Cloudflare Pages（免费、免审核）
+
+EdgeOne KV 需申请审核；Cloudflare 的 KV 免费额度可直接使用，且不需要本地安装任何 CLI。
+
+1. Cloudflare 控制台 → Workers & Pages → Create → Pages → Connect to Git，选择本仓库。
+2. 构建命令 `npm run build`，输出目录 `dist`，框架预设 Vite（根目录保持默认可）。
+3. 项目 Settings → Functions → KV namespace bindings：新建命名空间 `leeco-partshub`，变量名填 `KV`。
+4. 项目 Settings → Environment variables：添加 `AUTH_TOKEN`（强随机），不要添加 `AUTH_DISABLED`。
+5. 重新部署，访问 `https://<项目名>.pages.dev`。
+
+实现说明：
+
+- 入口 `functions/api/[[path]].js`，与 EdgeOne 入口共用 `server/http/router.js`；运行时只依赖 Web 标准 API（无 `node:*`）。
+- `EdgeOneKV` 适配器同时兼容 Cloudflare 的 `keys[].name` 与 `list_complete` 返回结构，并把含 `:`/中文的业务 key 编码为十六进制。
+- 免费额度：读 10 万次/天、写/删/列各 1000 次/天、存储 1GB。每次出入库约消耗 5～10 次写，日常个人使用足够；超限后写入会被限流，次日恢复。
+- 数据迁移：本地「备份与设置」导出 JSON → 线上登录后恢复。
+- 前端沿用了保守的体积上限（附件单文件 300KB、备份/导入 900KB）；如果只部署在 Cloudflare，可以按需放宽 `src/shared/offline.ts` 的判定与对应校验。
 
 ## 离线桌面版（Electron）
 

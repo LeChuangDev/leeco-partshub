@@ -4,14 +4,30 @@
 // 数据落在 .data/local-kv.json（可通过 KV_FILE 覆盖），与生产 EdgeOne KV 隔离。
 // PORT / KV_FILE 可由环境变量指定，便于并行启动隔离的验证实例。
 import http from 'node:http'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { handleApi } from '../../server/http/router.js'
 import { FileKV } from '../../server/infrastructure/kv/file-kv.js'
 import { DEV_TOKEN } from '../../server/http/auth.js'
 
-const PORT = Number(process.env.PORT) || 8787
 const __dirname = dirname(fileURLToPath(import.meta.url))
+
+// 读取项目根目录 .env（已被 .gitignore 忽略），让本地令牌与线上保持一致，无需额外依赖
+function loadEnvFile(file) {
+  if (!existsSync(file)) return
+  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const matched = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/)
+    if (!matched) continue
+    const [, key, raw] = matched
+    if (process.env[key] !== undefined) continue
+    const quoted = /^(['"]).*\1$/.test(raw)
+    process.env[key] = quoted ? raw.slice(1, -1) : raw
+  }
+}
+loadEnvFile(join(__dirname, '../../.env'))
+
+const PORT = Number(process.env.PORT) || 8787
 const kvFile = process.env.KV_FILE || join(__dirname, '../../.data/local-kv.json')
 const kv = new FileKV(kvFile)
 const env = {
