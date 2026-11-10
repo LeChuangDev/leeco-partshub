@@ -726,7 +726,7 @@ async function main() {
 
   console.log('\n[26] 嘉立创开放平台接入')
   const { buildStringToSign, signString } = await import('../../server/infrastructure/jlc/client.js')
-  const { queryComponent, normalizeComponent } = await import('../../server/application/jlc.service.js')
+  const { queryComponent, normalizeComponent, normalizeEasyEda } = await import('../../server/application/component-info.service.js')
   const officialText = buildStringToSign({
     method: 'POST',
     path: '/order/v1/createOrder',
@@ -739,9 +739,13 @@ async function main() {
   ok('HmacSHA256 签名值匹配官方示例',
     officialSign === 'sygwKhKBkLwHVv0c7D+a/A7JTEJjGH/kLugFKh16918=', officialSign)
 
-  const unconfigured = await queryComponent({}, 'C12345')
-  ok('未配置密钥时给出配置指引', unconfigured.configured === false && unconfigured.message.includes('JLC_APP_ID'))
-  const noPath = await queryComponent({ JLC_APP_ID: 'a', JLC_ACCESS_KEY: 'b', JLC_SECRET_KEY: 'c' }, 'C12345')
+  const unconfigured = await queryComponent({}, 'ABC-123')
+  ok('非 C 料号且未配置密钥时给出指引', unconfigured.configured === false && unconfigured.message.includes('C 开头'))
+  const noPath = await queryComponent(
+    { JLC_APP_ID: 'a', JLC_ACCESS_KEY: 'b', JLC_SECRET_KEY: 'c' },
+    'C12345',
+    { fetchImpl: async () => new Response('', { status: 404 }) }
+  )
   ok('已配置密钥但缺少接口路径时提示', noPath.configured === true && noPath.message.includes('JLC_COMPONENT_PATH'))
 
   const fakeFetch = async () => new Response(JSON.stringify({
@@ -760,8 +764,44 @@ async function main() {
   const normalized = normalizeComponent({ componentCode: 'C9', goodsName: '电容 100nF', brand: 'Samsung', encapsulation: '0603', inventory: 50, salePrice: 0.02 })
   ok('归一化兼容不同字段别名', normalized.sku === 'C9' && normalized.brand === 'Samsung' && normalized.package === '0603')
 
+  console.log('\n[27] 嘉立创公开器件库（免密钥回退）')
+  const fakeEasyEda = async () => new Response(JSON.stringify({
+    success: true,
+    code: 0,
+    result: {
+      title: '0603WAF1002T5E',
+      description: '10KΩ (1002) ±1%',
+      dataStr: {
+        head: {
+          c_para: {
+            name: '0603WAF1002T5E',
+            package: 'R0603',
+            Manufacturer: 'UNI-ROYAL(厚声)',
+            'Manufacturer Part': '0603WAF1002T5E',
+            'Supplier Part': 'C25804',
+            Value: '10kΩ'
+          }
+        }
+      },
+      lcsc: { number: 'C25804', price: 0.0017, stock: 8999650, url: 'https://lcsc.com/product-detail/C25804.html' }
+    }
+  }), { status: 200 })
+  const easyItem = normalizeEasyEda(JSON.parse(await (await fakeEasyEda()).text()).result, 'C25804')
+  ok('公开库归一化：封装 R0603 → 0603', easyItem.package === '0603', easyItem.package)
+  ok('公开库归一化：品牌与型号', easyItem.brand.includes('UNI-ROYAL') && easyItem.model === '0603WAF1002T5E')
+  ok('公开库归一化：库存与价格', easyItem.stock === 8999650 && easyItem.price === 0.0017)
+  ok('公开库归一化：名称含规格值', easyItem.name.includes('10kΩ'), easyItem.name)
+
+  const easyQuery = await queryComponent({}, 'C25804', { fetchImpl: fakeEasyEda })
+  ok('未配置密钥也能按 C 料号查询', easyQuery.ok === true && easyQuery.source === 'easyeda', JSON.stringify(easyQuery).slice(0, 120))
+  const easyMissing = await queryComponent({}, 'C999999', { fetchImpl: async () => new Response('', { status: 404 }) })
+  ok('公开库查不到时给出明确提示', easyMissing.ok === false && easyMissing.message.includes('C999999'))
+  const easyInvalid = await queryComponent({}, 'STM32F103C8T6', { fetchImpl: fakeEasyEda })
+  ok('非 C 料号不会误查公开库', easyInvalid.ok === false && easyInvalid.message.includes('C 开头'))
+
   console.log(`\n========== 结果: ${passed} 通过, ${failed} 失败 ==========`)
-  process.exit(failed === 0 ? 0 : 1)
+  // 用 exitCode 而非 process.exit：避免 Windows 下 fetch/undici 句柄未释放触发 libuv 断言
+  process.exitCode = failed === 0 ? 0 : 1
 }
 
-main().catch((e) => { console.error('测试异常:', e); process.exit(1) })
+main().catch((e) => { console.error('测试异常:', e); process.exitCode = 1 })

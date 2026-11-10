@@ -4,7 +4,7 @@
 import { json, readBody } from '../http-utils.js'
 import { listParts } from '../../application/catalog.service.js'
 import { placeholderPartInfo } from '../../application/import.service.js'
-import { queryComponent } from '../../application/jlc.service.js'
+import { queryComponent } from '../../application/component-info.service.js'
 import {
   createPart, deletePart, getPart, updatePart
 } from '../../repositories/part.repository.js'

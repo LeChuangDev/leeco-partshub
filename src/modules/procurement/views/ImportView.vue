@@ -116,14 +116,14 @@
       <div class="proxy-head">
         <div class="row gap-8">
           <span class="block-title" style="margin: 0">器件信息查询</span>
-          <span class="chip">嘉立创开放平台</span>
+          <span class="chip">立创 / 嘉立创</span>
         </div>
         <span class="dim" style="font-size: 12px">服务端代理</span>
       </div>
-      <p class="muted">按料号从嘉立创开放平台拉取名称、品牌、封装、库存与价格。需在服务端配置 <code class="code">JLC_APP_ID</code> / <code class="code">JLC_ACCESS_KEY</code> / <code class="code">JLC_SECRET_KEY</code>，接口路径由 <code class="code">JLC_COMPONENT_PATH</code> 指定。</p>
+      <p class="muted">输入立创商城料号（C 开头）可直接从嘉立创公开器件库查询名称、品牌、封装、库存与价格，无需密钥；若已配置开放平台密钥则优先走官方接口。</p>
       <div class="row gap-8" style="flex-wrap: wrap">
         <n-select v-model:value="infoPlatform" :options="infoPlatformOptions" size="small" style="width: 170px" />
-        <n-input v-model:value="infoSku" placeholder="料号，如 C12345" size="small" style="width: 190px" @keyup.enter="queryInfo" />
+        <n-input v-model:value="infoSku" placeholder="料号，如 C25804" size="small" style="width: 190px" @keyup.enter="queryInfo" />
         <n-button size="small" @click="queryInfo" :loading="infoLoading">查询</n-button>
       </div>
       <n-descriptions v-if="infoItem" bordered :column="2" size="small" style="margin-top: 12px">
@@ -133,8 +133,9 @@
         <n-descriptions-item label="封装">{{ infoItem.package || '—' }}</n-descriptions-item>
         <n-descriptions-item label="库存">{{ infoItem.stock ?? '—' }}</n-descriptions-item>
         <n-descriptions-item label="单价">{{ infoItem.price ?? '—' }}</n-descriptions-item>
-        <n-descriptions-item label="数据手册" :span="2">
-          <a v-if="infoItem.datasheetUrl" :href="infoItem.datasheetUrl" target="_blank" rel="noreferrer">{{ infoItem.datasheetUrl }}</a>
+        <n-descriptions-item label="规格" :span="2">{{ infoItem.description || '—' }}</n-descriptions-item>
+        <n-descriptions-item label="链接" :span="2">
+          <a v-if="infoItem.url || infoItem.datasheetUrl" :href="infoItem.url || infoItem.datasheetUrl" target="_blank" rel="noreferrer">{{ infoItem.url || infoItem.datasheetUrl }}</a>
           <span v-else>—</span>
         </n-descriptions-item>
       </n-descriptions>

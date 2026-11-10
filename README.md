@@ -223,7 +223,14 @@ EdgeOne KV 需要申请审核；不想等可以改用 Cloudflare Pages，全程�
 
 ## 嘉立创开放平台接入
 
-按 [嘉立创开放平台开发指南](https://open.jlc.com/develop-guide) 实现，服务端代理，密钥不进前端：
+器件信息查询有两条通道，服务端代理，密钥不进前端：
+
+| 通道 | 条件 | 能查到 |
+| --- | --- | --- |
+| **嘉立创 EDA 公开器件库**（默认） | 无需密钥，只要立创商城 C 料号 | 名称、型号、品牌、封装、规格值、价格、库存、商品链接 |
+| **嘉立创开放平台**（可选） | 创建应用并申请接口权限，配置下表变量 | 以授权接口返回为准 |
+
+官方开放平台变量（不配也能用公开库）：
 
 | 变量 | 说明 |
 | --- | --- |
@@ -233,16 +240,18 @@ EdgeOne KV 需要申请审核；不想等可以改用 Cloudflare Pages，全程�
 | `JLC_COMPONENT_PATH` | 器件查询接口路径，按应用获授权的 API 文档填写，如 `/component/v1/detail` |
 | `JLC_BASE_URL` | 可选，默认 `https://open-api.jlc.com` |
 
-实现要点（`server/infrastructure/jlc/client.js`）：
+官方通道实现要点（`server/infrastructure/jlc/client.js`）：
 
 - 仅 HTTPS + POST + JSON，UTF-8
 - 签名串：`POST\n路径\n秒级时间戳\n32位随机串\n请求体JSON\n`，用 SecretKey 做 HmacSHA256 后 Base64
 - 请求头：`Authorization: JOP appid="…",accesskey="…",nonce="…",timestamp="…",signature="…"`
 - 失败时保留 `J-Trace-ID` 便于官方客服定位
 
-使用方式：「订单导入」页底部「器件信息查询」输入料号（如 `C12345`）→ 查询。未配置密钥或未填接口路径时，界面会给出明确提示，不会报错崩溃。
+公开库实现（`server/infrastructure/easyeda/client.js`）：只读 `https://easyeda.com/api/products/{料号}/components`，把 `c_para` 与 `lcsc.price/stock` 归一化成统一结构；`R0603` 这类封装会自动归一为 `0603`。
 
-> 注意：开放平台需要先创建应用并申请对应接口权限；不同应用可用的接口路径不同，因此路径做成配置项，不写死。离线桌面版不联网，该入口自动隐藏且接口返回 501。
+使用方式：「订单导入」页底部「器件信息查询」输入料号（如 `C25804`）→ 查询。优先走官方通道，未配置或查询失败时自动回退到公开库；非 C 料号且未配置密钥时会提示改用料号查询。
+
+> 注意：公开库是嘉立创 EDA 编辑器自身使用的数据源，官方可能调整结构，届时只需改 `easyeda/client.js`。离线桌面版不联网，该入口自动隐藏且接口返回 501。
 
 ## 离线桌面版（Electron）
 
