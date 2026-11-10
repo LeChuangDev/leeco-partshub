@@ -11,11 +11,8 @@ import {
 import { listStock } from '../../repositories/stock.repository.js'
 
 export async function handleParts({ request, method, url, kv, seg, env }) {
-  // /api/parts/info/:platform/:sku —— 第三方器件信息（嘉立创开放平台 / 其它平台占位）
+  // /api/parts/info/:platform/:sku —— 第三方器件信息（公开库免密钥，官方开放平台可选）
   if (seg[1] === 'info' && seg[2] && seg[3]) {
-    if (env && env.OFFLINE === '1') {
-      return json(501, {}, '离线版不联网，无法查询嘉立创等第三方接口', 501)
-    }
     if (seg[2] === 'lcsc' || seg[2] === 'jlc') {
       return json(0, await queryComponent(env, decodeURIComponent(seg[3])))
     }

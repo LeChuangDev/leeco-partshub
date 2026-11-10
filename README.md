@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/TypeScript-5.6-2b3196?style=flat-square" alt="TypeScript 5.6" />
   <img src="https://img.shields.io/badge/EdgeOne-Serverless-2b3196?style=flat-square" alt="EdgeOne Serverless" />
   <img src="https://img.shields.io/badge/node-18.17%2B-2b3196?style=flat-square" alt="Node 18.17+" />
-  <img src="https://img.shields.io/badge/checks-158%2F158-2e7d5b?style=flat-square" alt="158 项单测通过" />
+  <img src="https://img.shields.io/badge/checks-220%2F220-2e7d5b?style=flat-square" alt="220 项单测通过" />
 </p>
 
 </div>
@@ -173,7 +173,7 @@ docs/             架构、开发、接口、验证报告与 ADR
 | 检查 | 结果 |
 | --- | --- |
 | `vue-tsc` 类型检查 | 0 错误 |
-| 领域与用例单测 | 158 / 158 |
+| 领域与用例单测 | 220 / 220 |
 | 进程内 API 契约 | 44 / 44 |
 | 后端 8 模块功能闭环 | 98 / 98 |
 | 前端 9 页面逐路由 | 38 / 38 |
@@ -251,7 +251,7 @@ EdgeOne KV 需要申请审核；不想等可以改用 Cloudflare Pages，全程�
 
 使用方式：「订单导入」页底部「器件信息查询」输入料号（如 `C25804`）→ 查询。优先走官方通道，未配置或查询失败时自动回退到公开库；非 C 料号且未配置密钥时会提示改用料号查询。
 
-> 注意：公开库是嘉立创 EDA 编辑器自身使用的数据源，官方可能调整结构，届时只需改 `easyeda/client.js`。离线桌面版不联网，该入口自动隐藏且接口返回 501。
+> 注意：公开库是嘉立创 EDA 编辑器自身使用的数据源，官方可能调整结构，届时只需改 `easyeda/client.js`。离线桌面版联网时同样可用；完全断网时仅该查询提示失败，其余功能不受影响。
 
 ## 离线桌面版（Electron）
 
@@ -268,7 +268,7 @@ npm run offline:dir     # 只生成免安装目录 release/win-unpacked
 - 内置服务复用 `server/http/router.js` + `FileKV`，静态资源与 `/api` 都走 `127.0.0.1` 随机端口，不监听外网。
 - 数据目录：应用菜单「文件 → 打开数据目录」；Windows 默认在 `%APPDATA%\leeco-partshub\data\local-kv.json`。
 - 离线版无需令牌，启动自动进入；附件与备份不受 EdgeOne 1MB 请求体限制。
-- 离线版不联网：嘉立创等第三方接口代理在离线版中关闭（接口返回 501，界面对应入口隐藏）。
+- 离线版默认不需要外网；「器件信息查询」走嘉立创公开库，需能访问 `easyeda.com`，断网时仅该功能不可用（不再返回 501）。
 - 安装包未配置代码签名，首次运行可能出现 SmartScreen 提示，选择「仍要运行」即可。
 
 国内网络打包前可先设置镜像：
@@ -301,7 +301,7 @@ $env:ELECTRON_BUILDER_BINARIES_MIRROR='https://npmmirror.com/mirrors/electron-bu
 
 已实现并验证：主数据、库存与库位、订单导入、BOM 齐套、项目 BOM、标签二维码、看板备份、操作日志、效率工具。
 
-尚未实现：第三方器件信息代理仍为占位接口；库存盘点、批次保质期、智能采购清单、PWA 与多用户权限属于后续范围，原因与阶段边界见 [报告改进对照](docs/REPORT-REMEDIATION.md)。
+尚未实现：库存盘点、批次保质期、智能采购清单、PWA 与多用户权限属于后续范围，原因与阶段边界见 [报告改进对照](docs/REPORT-REMEDIATION.md)。
 
 ---
 

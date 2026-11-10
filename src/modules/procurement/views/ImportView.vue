@@ -111,8 +111,8 @@
       </div>
     </div>
 
-    <!-- 第三方代理占位：离线版不联网，直接隐藏 -->
-    <div v-if="EXTERNAL_API" class="card card-pad mt-16 proxy">
+    <!-- 器件信息查询：公开库免密钥，离线版联网时同样可用 -->
+    <div v-if="COMPONENT_LOOKUP" class="card card-pad mt-16 proxy">
       <div class="proxy-head">
         <div class="row gap-8">
           <span class="block-title" style="margin: 0">器件信息查询</span>
@@ -120,7 +120,7 @@
         </div>
         <span class="dim" style="font-size: 12px">服务端代理</span>
       </div>
-      <p class="muted">输入立创商城料号（C 开头）可直接从嘉立创公开器件库查询名称、品牌、封装、库存与价格，无需密钥；若已配置开放平台密钥则优先走官方接口。</p>
+      <p class="muted">输入立创商城料号（C 开头）可直接从嘉立创公开器件库查询名称、品牌、封装、库存与价格，无需密钥{{ IS_OFFLINE ? '（离线版需联网）' : '' }}；若已配置开放平台密钥则优先走官方接口。</p>
       <div class="row gap-8" style="flex-wrap: wrap">
         <n-select v-model:value="infoPlatform" :options="infoPlatformOptions" size="small" style="width: 170px" />
         <n-input v-model:value="infoSku" placeholder="料号，如 C25804" size="small" style="width: 190px" @keyup.enter="queryInfo" />
@@ -155,7 +155,7 @@ import { api } from '@/shared/api'
 import { mapRow, detectPlatform, PLATFORMS } from '@server/domain/import-map.js'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import PageHeader from '@/shared/ui/PageHeader.vue'
-import { BODY_LIMIT, EXTERNAL_API, IS_EDGE } from '@/shared/offline'
+import { BODY_LIMIT, COMPONENT_LOOKUP, IS_EDGE, IS_OFFLINE } from '@/shared/offline'
 import { emitDataChanged } from '@/shared/utils/events'
 import type { Location } from '@/shared/api/types'
 

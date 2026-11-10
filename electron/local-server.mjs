@@ -96,7 +96,7 @@ async function serveStatic(res, rootDir, pathname) {
  */
 export function startLocalServer({ rootDir, kvFile, port = 0 }) {
   const kv = new FileKV(kvFile)
-  // 离线版：无登录令牌，数据只存在本机；OFFLINE=1 用于关闭公网接口代理能力
+  // 离线版：无登录令牌，数据只存在本机；公开器件库查询仍可用（需联网）
   const env = { LOCAL_KV: kv, AUTH_DISABLED: '1', OFFLINE: '1' }
 
   const server = http.createServer(async (req, res) => {

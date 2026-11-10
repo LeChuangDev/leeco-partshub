@@ -140,7 +140,7 @@ EdgeOne KV 需申请审核；Cloudflare 的 KV 免费额度可直接使用，且
 - 构建：`npm run build:offline`（Vite `--mode offline`，读取 `.env.offline` 的 `VITE_OFFLINE=1`）。
 - 运行：`npm run offline:dev`；打包：`npm run offline:pack` → `release/LeecoPartsHub-<version>-x64.exe`；免安装目录：`npm run offline:dir`。
 - 数据：`FileKV` 写入 `app.getPath('userData')/data/local-kv.json`（Windows 为 `%APPDATA%\leeco-partshub\data\local-kv.json`），应用菜单「文件 → 打开数据目录」可直接定位；与线上 EdgeOne KV 完全隔离。
-- 离线版不校验令牌（本地服务注入 `AUTH_DISABLED=1`），附件/备份/导入不受 EdgeOne 1MB 限制。
+- 离线版不校验令牌（本地服务注入 `AUTH_DISABLED=1`），附件/备份/导入不受 EdgeOne 1MB 限制；「器件信息查询」在离线版同样可用（公开库只读、无需密钥，需能访问 `easyeda.com`）。
 - `release/`、`dist-offline/` 已加入 Vite watch ignore，避免 Windows 下打包产物被占用导致 dev server 退出。
 - 安装包未签名；首次运行如出现 SmartScreen，选择「仍要运行」。
 

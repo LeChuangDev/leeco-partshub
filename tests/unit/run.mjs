@@ -709,20 +709,22 @@ async function main() {
 
   console.log('\n[25] 离线版能力边界')
   const { handleApi } = await import('../../server/http/router.js')
-  const infoUrl = 'https://local/api/parts/info/lcsc/C12345'
+  // 非 C 料号不会触发公网查询，用于验证路由在离线环境下不再被 501 拦截
+  const infoUrl = 'https://local/api/parts/info/lcsc/STM32F103C8T6'
   const offlineInfo = await handleApi(
     new Request(infoUrl),
     { LOCAL_KV: new MemoryKV(), AUTH_DISABLED: '1', OFFLINE: '1' },
     new URL(infoUrl)
   )
   const offlineInfoBody = await offlineInfo.json()
-  ok('离线版第三方接口返回 501', offlineInfo.status === 501 && String(offlineInfoBody.msg).includes('离线'), JSON.stringify(offlineInfoBody))
+  ok('离线版第三方查询不再返回 501', offlineInfo.status === 200 && offlineInfoBody.code === 0, JSON.stringify(offlineInfoBody))
+  ok('离线版非 C 料号给出公开库指引', String(offlineInfoBody.data?.message || '').includes('C 开头'), JSON.stringify(offlineInfoBody))
   const onlineInfo = await handleApi(
     new Request(infoUrl),
     { LOCAL_KV: new MemoryKV(), AUTH_DISABLED: '1' },
     new URL(infoUrl)
   )
-  ok('联网版仍返回占位数据', onlineInfo.status === 200)
+  ok('联网版行为一致', onlineInfo.status === 200)
 
   console.log('\n[26] 嘉立创开放平台接入')
   const { buildStringToSign, signString } = await import('../../server/infrastructure/jlc/client.js')
@@ -798,6 +800,8 @@ async function main() {
   ok('公开库查不到时给出明确提示', easyMissing.ok === false && easyMissing.message.includes('C999999'))
   const easyInvalid = await queryComponent({}, 'STM32F103C8T6', { fetchImpl: fakeEasyEda })
   ok('非 C 料号不会误查公开库', easyInvalid.ok === false && easyInvalid.message.includes('C 开头'))
+  const offlineEasy = await queryComponent({ OFFLINE: '1' }, 'C25804', { fetchImpl: fakeEasyEda })
+  ok('离线版环境同样可查公开库', offlineEasy.ok === true && offlineEasy.source === 'easyeda')
 
   console.log(`\n========== 结果: ${passed} 通过, ${failed} 失败 ==========`)
   // 用 exitCode 而非 process.exit：避免 Windows 下 fetch/undici 句柄未释放触发 libuv 断言
