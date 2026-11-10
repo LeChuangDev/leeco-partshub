@@ -10,7 +10,10 @@
         </div>
         <div class="sec-body">
           <div class="sec-title">全量数据备份</div>
-          <div class="sec-desc">导出全部元器件、库存批次、位置与流水为标准 JSON；可随时导入完整恢复。建议每次批量入库后备份一次。</div>
+          <div class="sec-desc">
+            导出全部元器件、库存批次、位置与流水为标准 JSON；可随时导入完整恢复。建议每次批量入库后备份一次。
+            <span class="backup-ago" :class="{ warn: backupAgo === null || backupAgo >= 7 }">{{ backupText }}</span>
+          </div>
           <div class="sec-actions">
             <n-button type="primary" @click="exportJson" :loading="loading">
               <template #icon><AppIcon name="download" :size="16" /></template>
@@ -32,12 +35,41 @@
           <AppIcon name="grid" :size="19" />
         </div>
         <div class="sec-body">
-          <div class="sec-title">导出 Excel 清单</div>
-          <div class="sec-desc">将当前数据导出为 Excel，便于盘点、对账与离线归档。</div>
+          <div class="sec-title">导出 Excel / CSV 清单</div>
+          <div class="sec-desc">将当前数据导出为 Excel，便于盘点、对账与离线归档；CSV 体积更小，可直接导入表格或脚本处理。</div>
           <div class="sec-actions">
             <n-button @click="exportXlsx('parts')">元器件清单</n-button>
             <n-button @click="exportXlsx('stock')">库存清单</n-button>
             <n-button @click="exportXlsx('lowstock')">低库存清单</n-button>
+            <n-button quaternary @click="exportCsv('parts')">元器件 CSV</n-button>
+            <n-button quaternary @click="exportCsv('stock')">库存 CSV</n-button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 数据自检 -->
+      <section class="card section">
+        <div class="sec-icon" style="background: rgba(91,108,255,.12); color: var(--primary)">
+          <AppIcon name="check" :size="19" />
+        </div>
+        <div class="sec-body">
+          <div class="sec-title">数据自检</div>
+          <div class="sec-desc">KV 没有事务，异常中断可能让索引与业务数据不一致。建议定期检查；发现问题后重建索引（只重写索引，不改业务数据）。</div>
+          <div class="sec-actions">
+            <n-button :loading="checking" @click="runIndexCheck">检查索引</n-button>
+            <n-button type="primary" secondary :loading="reindexing" :disabled="!checkResult || checkResult.healthy" @click="runReindex">重建索引</n-button>
+          </div>
+          <div v-if="checkResult" class="check-result" :class="checkResult.healthy ? 'ok' : 'bad'">
+            <div>
+              <b>{{ checkResult.healthy ? '索引一致' : `发现 ${checkResult.issues.length} 类问题` }}</b>
+              <span class="dim"> · {{ checkResult.counts.parts ?? 0 }} 器件 / {{ checkResult.counts.stocks ?? 0 }} 批次 / {{ checkResult.counts.transactions ?? 0 }} 流水</span>
+            </div>
+            <ul v-if="checkResult.issues.length" class="cr-list">
+              <li v-for="(it, i) in checkResult.issues" :key="i">{{ it }}</li>
+            </ul>
+            <div v-if="reindexResult" class="dim" style="font-size: 12px; margin-top: 6px">
+              重建完成：写入 {{ reindexResult.written }} 个索引键，清理 {{ reindexResult.removed }} 个孤儿键，跳过 {{ reindexResult.unchanged }} 个未变化键。
+            </div>
           </div>
         </div>
       </section>
@@ -108,7 +140,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NUpload, NInput, NModal, useDialog, useMessage } from 'naive-ui'
 import { api, getToken } from '@/shared/api'
@@ -116,6 +148,7 @@ import { useAuth } from '@/modules/auth/stores/auth'
 import AppIcon from '@/shared/ui/AppIcon.vue'
 import PageHeader from '@/shared/ui/PageHeader.vue'
 import { BRAND } from '@/shared/brand'
+import { daysSinceBackup, markBackupDone } from '@/shared/backup'
 import { BODY_LIMIT, IS_EDGE, IS_OFFLINE } from '@/shared/offline'
 import { emitDataChanged } from '@/shared/utils/events'
 
@@ -132,6 +165,17 @@ const pendingRestore = ref<any>(null)
 const dryCounts = ref<Record<string, number>>({})
 const dryWarnings = ref<string[]>([])
 const currentCounts = ref<Record<string, number>>({})
+const backupAgo = ref<number | null>(null)
+const checking = ref(false)
+const reindexing = ref(false)
+const checkResult = ref<any>(null)
+const reindexResult = ref<any>(null)
+
+const backupText = computed(() => {
+  if (backupAgo.value === null) return '尚未导出过备份'
+  return backupAgo.value === 0 ? '上次导出：今天' : `上次导出：${backupAgo.value} 天前`
+})
+onMounted(() => { backupAgo.value = daysSinceBackup() })
 
 const masked = computed(() => { const t = getToken(); return t ? t.slice(0, 4) + '••••••••' + t.slice(-2) : '未设置' })
 
@@ -141,6 +185,8 @@ async function exportJson() {
     const data = await api.exportAll()
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     download(URL.createObjectURL(blob), `leeco-backup-${Date.now()}.json`)
+    markBackupDone()
+    backupAgo.value = 0
     message.success('已导出')
   } catch (e: any) { message.error(e.message) }
   finally { loading.value = false }
@@ -220,35 +266,40 @@ async function doRestore() {
   }
 }
 
+async function buildRows(kind: 'parts' | 'stock' | 'lowstock') {
+  let rows: any[] = []
+  if (kind === 'parts') {
+    const data: any = await api.exportAll()
+    const catMap = new Map((data.categories || []).map((c: any) => [c.id, c.name]))
+    const qtyMap: Record<string, number> = {}
+    for (const s of data.stocks || []) qtyMap[s.partId] = (qtyMap[s.partId] || 0) + (Number(s.quantity) || 0)
+    rows = (data.parts || []).map((p: any) => ({
+      名称: p.name, 内部编号: p.internalNo, 分类: catMap.get(p.categoryId) || '未分类', 封装: p.package,
+      型号: p.manufacturerModel, 品牌: p.brand, 标签: (p.tags || []).join(','),
+      库存: qtyMap[p.id] ?? 0, 安全库存: p.safetyStock || 0
+    }))
+  } else if (kind === 'stock') {
+    const data: any = await api.exportAll()
+    const partMap = new Map((data.parts || []).map((p: any) => [p.id, p]))
+    const locMap = new Map((data.locations || []).map((l: any) => [l.id, l.name + ' (' + l.code + ')']))
+    rows = (data.stocks || []).map((s: any) => {
+      const p: any = partMap.get(s.partId) || {}
+      return {
+        名称: p.name || s.partId, 型号: p.manufacturerModel || '', 封装: p.package || '',
+        位置: locMap.get(s.locationId) || '', 数量: s.quantity, 单位: s.unit,
+        单价: s.unitPrice, 供应商: s.supplier, 订单号: s.orderNo || '', 入库时间: s.createdAt || ''
+      }
+    })
+  } else {
+    const st = await api.stats()
+    rows = st.lowStock.map((l) => ({ 名称: l.name, 当前库存: l.quantity, 安全库存: l.safetyStock }))
+  }
+  return rows
+}
+
 async function exportXlsx(kind: 'parts' | 'stock' | 'lowstock') {
   try {
-    let rows: any[] = []
-    if (kind === 'parts') {
-      const data: any = await api.exportAll()
-      const catMap = new Map((data.categories || []).map((c: any) => [c.id, c.name]))
-      const qtyMap: Record<string, number> = {}
-      for (const s of data.stocks || []) qtyMap[s.partId] = (qtyMap[s.partId] || 0) + (Number(s.quantity) || 0)
-      rows = (data.parts || []).map((p: any) => ({
-        名称: p.name, 内部编号: p.internalNo, 分类: catMap.get(p.categoryId) || '未分类', 封装: p.package,
-        型号: p.manufacturerModel, 品牌: p.brand, 标签: (p.tags || []).join(','),
-        库存: qtyMap[p.id] ?? 0, 安全库存: p.safetyStock || 0
-      }))
-    } else if (kind === 'stock') {
-      const data: any = await api.exportAll()
-      const partMap = new Map((data.parts || []).map((p: any) => [p.id, p]))
-      const locMap = new Map((data.locations || []).map((l: any) => [l.id, l.name + ' (' + l.code + ')']))
-      rows = (data.stocks || []).map((s: any) => {
-        const p: any = partMap.get(s.partId) || {}
-        return {
-          名称: p.name || s.partId, 型号: p.manufacturerModel || '', 封装: p.package || '',
-          位置: locMap.get(s.locationId) || '', 数量: s.quantity, 单位: s.unit,
-          单价: s.unitPrice, 供应商: s.supplier, 订单号: s.orderNo || '', 入库时间: s.createdAt || ''
-        }
-      })
-    } else {
-      const st = await api.stats()
-      rows = st.lowStock.map((l) => ({ 名称: l.name, 当前库存: l.quantity, 安全库存: l.safetyStock }))
-    }
+    const rows = await buildRows(kind)
     const XLSX = await import('xlsx')
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
@@ -257,6 +308,54 @@ async function exportXlsx(kind: 'parts' | 'stock' | 'lowstock') {
     message.success('已导出 Excel')
   } catch (e: any) {
     message.error('导出失败：' + (e?.message || e))
+  }
+}
+
+/** CSV 导出：带 BOM，Excel 直接双击打开不乱码 */
+async function exportCsv(kind: 'parts' | 'stock') {
+  try {
+    const rows = await buildRows(kind)
+    if (!rows.length) { message.warning('没有可导出的数据'); return }
+    const headers = Object.keys(rows[0])
+    const escape = (v: unknown) => {
+      const s = v === null || v === undefined ? '' : String(v)
+      return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+    }
+    const text = '\ufeff' + [headers.join(','), ...rows.map((r) => headers.map((h) => escape(r[h])).join(','))].join('\r\n')
+    const blob = new Blob([text], { type: 'text/csv;charset=utf-8' })
+    download(URL.createObjectURL(blob), `leeco-${kind}-${Date.now()}.csv`)
+    message.success('已导出 CSV')
+  } catch (e: any) {
+    message.error('导出失败：' + (e?.message || e))
+  }
+}
+
+async function runIndexCheck() {
+  checking.value = true
+  reindexResult.value = null
+  try {
+    checkResult.value = await api.indexCheck()
+    if (checkResult.value.healthy) message.success('索引一致')
+    else message.warning(`发现 ${checkResult.value.issues.length} 类索引问题`)
+  } catch (e: any) {
+    message.error('检查失败：' + (e?.message || e))
+  } finally {
+    checking.value = false
+  }
+}
+
+async function runReindex() {
+  if (!checkResult.value) return
+  reindexing.value = true
+  try {
+    const r = await api.reindex()
+    reindexResult.value = r
+    message.success(`索引已重建：写入 ${r.written} 个键`)
+    checkResult.value = await api.indexCheck()
+  } catch (e: any) {
+    message.error('重建失败：' + (e?.message || e))
+  } finally {
+    reindexing.value = false
   }
 }
 
@@ -298,6 +397,12 @@ function logout() { auth.logout(); router.push({ name: 'login' }) }
 .sec-desc { color: var(--text-2); font-size: 12.5px; line-height: 1.65; margin-top: 4px; }
 .sec-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .sec-actions :deep(.n-upload) { display: inline-flex; width: auto; }
+.backup-ago { margin-left: 6px; font-size: 12px; color: var(--text-3); }
+.backup-ago.warn { color: var(--warning); }
+.check-result { margin-top: 12px; padding: 10px 12px; border-radius: 9px; font-size: 12.5px; line-height: 1.65; }
+.check-result.ok { background: rgba(46,125,91,.08); }
+.check-result.bad { background: rgba(245,158,11,.10); }
+.cr-list { margin: 6px 0 0; padding-left: 18px; color: var(--warning); }
 .code { font-family: var(--mono); font-size: 12px; background: var(--surface-3); padding: 1px 5px; border-radius: 5px; color: var(--primary); }
 @media (max-width: 640px) {
   .section { padding: 16px; gap: 12px; }

@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/TypeScript-5.6-2b3196?style=flat-square" alt="TypeScript 5.6" />
   <img src="https://img.shields.io/badge/EdgeOne-Serverless-2b3196?style=flat-square" alt="EdgeOne Serverless" />
   <img src="https://img.shields.io/badge/node-18.17%2B-2b3196?style=flat-square" alt="Node 18.17+" />
-  <img src="https://img.shields.io/badge/checks-220%2F220-2e7d5b?style=flat-square" alt="220 项单测通过" />
+  <img src="https://img.shields.io/badge/checks-229%2F229-2e7d5b?style=flat-square" alt="229 项单测通过" />
 </p>
 
 </div>
@@ -173,7 +173,7 @@ docs/             架构、开发、接口、验证报告与 ADR
 | 检查 | 结果 |
 | --- | --- |
 | `vue-tsc` 类型检查 | 0 错误 |
-| 领域与用例单测 | 220 / 220 |
+| 领域与用例单测 | 229 / 229 |
 | 进程内 API 契约 | 44 / 44 |
 | 后端 8 模块功能闭环 | 98 / 98 |
 | 前端 9 页面逐路由 | 38 / 38 |

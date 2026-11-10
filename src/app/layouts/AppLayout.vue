@@ -82,6 +82,13 @@
         </div>
       </header>
 
+      <div v-if="showBackupTip" class="backup-tip" role="status">
+        <AppIcon name="clock" :size="15" />
+        <span>已 {{ backupDays }} 天没有全量备份，建议现在导出一次。</span>
+        <button class="bt-link" @click="router.push({ name: 'backup' })">去备份</button>
+        <button class="bt-close" aria-label="关闭提醒" @click="dismissBackupTip">×</button>
+      </div>
+
       <main class="content">
         <router-view v-slot="{ Component }">
           <transition name="fade" mode="out-in">
@@ -99,7 +106,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NMenu, NButton, NDropdown, NDrawer, NDrawerContent } from 'naive-ui'
 import { useAuth } from '@/modules/auth/stores/auth'
@@ -109,6 +116,7 @@ import AppIcon from '@/shared/ui/AppIcon.vue'
 import BrandMark from '@/shared/ui/BrandMark.vue'
 import { BRAND } from '@/shared/brand'
 import { IS_OFFLINE } from '@/shared/offline'
+import { daysSinceBackup } from '@/shared/backup'
 import QuickAddModal from '@/modules/inventory/components/QuickAddModal.vue'
 import CommandPalette from '@/app/components/CommandPalette.vue'
 import ScanModal from '@/modules/inventory/components/ScanModal.vue'
@@ -124,6 +132,18 @@ const modKey = /Mac|iPhone|iPad/i.test(navigator.platform) ? '⌘K' : 'Ctrl K'
 const collapsed = ref(false)
 const isMobile = ref(false)
 const drawer = ref(false)
+
+// 备份提醒：仅在上次备份超过 7 天后出现，当天手动关闭后不再打扰
+const BACKUP_DISMISS_KEY = 'leeco_backup_tip_dismissed'
+const today = () => new Date().toISOString().slice(0, 10)
+const backupDays = ref<number | null>(null)
+const backupTipDismissed = ref(false)
+try { backupTipDismissed.value = localStorage.getItem(BACKUP_DISMISS_KEY) === today() } catch { /* ignore */ }
+const showBackupTip = computed(() => backupDays.value !== null && backupDays.value >= 7 && !backupTipDismissed.value)
+function dismissBackupTip() {
+  backupTipDismissed.value = true
+  try { localStorage.setItem(BACKUP_DISMISS_KEY, today()) } catch { /* ignore */ }
+}
 
 const menuOptions = [
   { label: '总览看板', key: 'dashboard', icon: () => h(AppIcon, { name: 'dashboard', size: 18 }) },
@@ -204,9 +224,11 @@ function onGlobalKey(e: KeyboardEvent) {
 
 onMounted(() => {
   syncViewport()
+  backupDays.value = daysSinceBackup()
   window.addEventListener('resize', syncViewport)
   window.addEventListener('keydown', onGlobalKey)
 })
+watch(() => route.name, () => { backupDays.value = daysSinceBackup() })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', syncViewport)
   window.removeEventListener('keydown', onGlobalKey)
@@ -296,6 +318,23 @@ function onUser(key: string) {
   font-family: var(--mono); font-size: 10px; line-height: 1;
   padding: 3px 5px; border-radius: 4px;
   border: 1px solid var(--outline); background: var(--surface); color: var(--text-3);
+}
+
+/* 备份提醒条 */
+.backup-tip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; font-size: 12.5px;
+  color: var(--warning);
+  background: rgba(245, 158, 11, .10);
+  border-bottom: 1px solid rgba(245, 158, 11, .22);
+}
+.bt-link {
+  border: none; background: none; padding: 0 2px;
+  color: var(--primary); font: inherit; font-weight: 650; cursor: pointer;
+}
+.bt-close {
+  margin-left: auto; border: none; background: none;
+  color: var(--text-3); font-size: 17px; line-height: 1; cursor: pointer;
 }
 
 .content {

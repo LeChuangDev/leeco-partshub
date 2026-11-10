@@ -114,6 +114,26 @@
 孤儿引用只产生 `warnings`，不阻断写入。审计日志是 append-only，恢复不会清空已有日志，
 恢复动作本身会追加一条 `backup.restore`。
 
+## 维护
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/maintenance/index-check` | 只读检查主索引与二级索引是否与业务数据一致，返回 `healthy` / `counts` / `issues` |
+| POST | `/api/maintenance/reindex?dryRun=1` | 预演重建，返回将要写入/删除的索引键，不写库 |
+| POST | `/api/maintenance/reindex` | 按 `part` / `stock` / `transaction` / `project` 等业务数据重建索引，并清理孤儿索引键 |
+
+索引重建只改 `index:*` 键，不改动业务数据；返回 `written` / `removed` / `unchanged` 与变更样例。
+「备份与设置 → 数据自检」提供同样的检查与重建入口。KV 没有事务，多键写入中断后可用它修复。
+
+## 响应头与限流
+
+| 项 | 说明 |
+| --- | --- |
+| `X-KV-Reads` / `X-KV-Writes` | 本次请求实际发生的 KV 读/写次数，用于核对免费额度（如 Cloudflare 每天 1000 次写） |
+| `429` + `Retry-After` | 同一来源 IP 在 15 分钟内鉴权失败 8 次后触发，`Retry-After` 为剩余秒数 |
+
+失败计数落在 `auth:fail:<ip>`（IP 取自 `CF-Connecting-IP` / `X-Real-IP` / `X-Forwarded-For`）；
+成功请求不产生额外读写。`AUTH_DISABLED=1` 时完全不限流。
 
 ## 统计口径（唯一实现：`server/domain/bom/summary.js`）
 

@@ -39,6 +39,10 @@ export async function request<T = unknown>(path: string, method = 'GET', body?: 
     unauthorizedHandler?.()
     throw new ApiError('未授权，请重新输入令牌', 401)
   }
+  if (res.status === 429) {
+    const payload = await res.json().catch(() => null)
+    throw new ApiError(payload?.msg || '尝试次数过多，请稍后再试', 429)
+  }
 
   const payload = await res.json().catch(() => ({ code: -1, data: {}, msg: '响应解析失败' }))
   if (payload.code !== 0) {

@@ -19,5 +19,19 @@ export const systemApi = {
   importBatches: (limit = 20) => request<ImportBatch[]>(`/import/batches${toQuery({ limit })}`),
   importUndo: (batchId: string) => request<{ ok: boolean; batchId: string; removed: Record<string, number> }>(
     '/import/undo', 'POST', { batchId }
-  )
+  ),
+  // 索引自检与重建
+  indexCheck: () => request<{
+    healthy: boolean
+    checkedAt: string
+    counts: Record<string, number>
+    issues: string[]
+  }>('/maintenance/index-check'),
+  reindex: (dryRun = false) => request<{
+    dryRun: boolean
+    written: number
+    removed: number
+    unchanged: number
+    changes: { key: string; action: string }[]
+  }>(`/maintenance/reindex${toQuery({ dryRun: dryRun ? 1 : '' })}`, 'POST')
 }

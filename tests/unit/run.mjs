@@ -14,6 +14,7 @@ import { moveStock as moveStockWithAudit } from '../../server/application/invent
 import { summarizeBom, METRIC_LABELS } from '../../server/domain/bom/summary.js'
 import { buildParamTemplate } from '../../server/domain/param-template.js'
 import { getStats } from '../../server/application/analytics.service.js'
+import { checkIndexes, rebuildIndexes } from '../../server/application/maintenance.service.js'
 import { listCategories, updateCategory } from '../../server/repositories/category.repository.js'
 import { createPart, deletePart, getPart } from '../../server/repositories/part.repository.js'
 import { createLocation } from '../../server/repositories/location.repository.js'
@@ -802,6 +803,53 @@ async function main() {
   ok('非 C 料号不会误查公开库', easyInvalid.ok === false && easyInvalid.message.includes('C 开头'))
   const offlineEasy = await queryComponent({ OFFLINE: '1' }, 'C25804', { fetchImpl: fakeEasyEda })
   ok('离线版环境同样可查公开库', offlineEasy.ok === true && offlineEasy.source === 'easyeda')
+
+  console.log('\n[28] 索引自检 / 重建与登录限流')
+  const kvMaint = new MemoryKV()
+  await seedIfEmpty(kvMaint)
+  const maintCats = await listCategories(kvMaint)
+  const maintCat = maintCats.find((c) => c.name.includes('电阻')) || maintCats[0]
+  await createPart(kvMaint, { name: '0603 10kΩ 电阻', categoryId: maintCat.id, package: '0603', tags: ['常用'] })
+
+  const healthyIdx = await checkIndexes(kvMaint)
+  ok('新建数据后索引自检通过', healthyIdx.healthy === true, JSON.stringify(healthyIdx.issues))
+
+  // 人为制造一个孤儿索引，模拟多键写入中断
+  const partsIdx = JSON.parse(await kvMaint.get('index:parts'))
+  await kvMaint.put('index:parts', JSON.stringify([...partsIdx, 'ghost-part']))
+  const brokenIdx = await checkIndexes(kvMaint)
+  ok('能发现主索引中的孤儿 ID', brokenIdx.healthy === false && brokenIdx.primary.parts.orphanCount === 1, JSON.stringify(brokenIdx.primary.parts))
+
+  const dryIdx = await rebuildIndexes(kvMaint, { dryRun: true })
+  const afterDry = JSON.parse(await kvMaint.get('index:parts'))
+  ok('dryRun 只报告不写入', dryIdx.written >= 1 && afterDry.includes('ghost-part'), JSON.stringify(dryIdx))
+
+  const fixedIdx = await rebuildIndexes(kvMaint)
+  ok('重建后索引恢复一致', fixedIdx.written >= 1 && (await checkIndexes(kvMaint)).healthy === true, JSON.stringify(fixedIdx))
+
+  // 登录失败限流：同一 IP 超过阈值后 429
+  const kvRl = new MemoryKV()
+  const rlEnv = { LOCAL_KV: kvRl, AUTH_TOKEN: 'right-token' }
+  const wrongToken = (ip, path = '/api/parts') => handleApi(
+    new Request(`https://local${path}`, { headers: { 'X-Auth-Token': 'wrong', 'CF-Connecting-IP': ip } }),
+    rlEnv,
+    new URL(`https://local${path}`)
+  )
+  let lastStatus = 0
+  for (let i = 0; i < 9; i += 1) lastStatus = (await wrongToken('1.2.3.4')).status
+  ok('连续失败 9 次后返回 429', lastStatus === 429, String(lastStatus))
+  const blockedRes = await wrongToken('1.2.3.4')
+  ok('限流响应带 Retry-After', blockedRes.status === 429 && Number(blockedRes.headers.get('Retry-After')) > 0)
+  ok('其他 IP 不受影响', (await wrongToken('5.6.7.8')).status === 401)
+  const authWrong = await wrongToken('9.9.9.9', '/api/auth/check')
+  ok('登录页校验失败仍返回 401', authWrong.status === 401)
+
+  const okRes = await handleApi(
+    new Request('https://local/api/parts', { headers: { 'X-Auth-Token': 'right-token' } }),
+    rlEnv,
+    new URL('https://local/api/parts')
+  )
+  ok('响应带 KV 写入计数头', okRes.status === 200 && Number(okRes.headers.get('X-KV-Writes')) >= 1, okRes.headers.get('X-KV-Writes') || 'missing')
 
   console.log(`\n========== 结果: ${passed} 通过, ${failed} 失败 ==========`)
   // 用 exitCode 而非 process.exit：避免 Windows 下 fetch/undici 句柄未释放触发 libuv 断言
